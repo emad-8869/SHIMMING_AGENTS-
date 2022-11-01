@@ -11,10 +11,28 @@ Base.@kwdef mutable struct boid{T<:Real}
         v::Vector{T} #velocity
         a::Vector{T} #acceleration
 end 
+
+Base.@kwdef mutable struct params
+    ℓ #dipole length
+    Γ₀ #init circulation
+    Γₐ #incremental circulation
+    v₀ #cruise velocity
+    vₐ #incremental velocity
+    ρ  #turn radius
+    function params(ℓ)
+        v0 = 5*ℓ
+        g0 = 2π*ℓ*v0 
+        ga = 0.1 *g0    
+        new(ℓ,g0,ga,v0,v0*0.1,0ℓ)
+    end 
+end 
     # Print function for a boid
 Base.show(io::IO,b::boid) = print(io,"Boid (x,y,α)=($(b.position),$(b.angle)), ̂v = $(b.v)")
    
+#SAMPLE constructorS
 b = boid([1.0,0.5],[-1.0,1.0], π/2, [0.0,0.0],[0.0,0.0])
+sim = params(5e-4)
+
 
 function vortex_vel(boids::Vector{boid{T}} ;ℓ=0.001) where T<:Real
     """
@@ -34,12 +52,12 @@ function vortex_vel(boids::Vector{boid{T}} ;ℓ=0.001) where T<:Real
     # targets = [b.position[:] for b in boids]
     for i in 1:n            
         dx = targets[1,:] .- (boids[i].position[1] .+ ℓ*cos(boids[i].angle+π/2))
-        dy = targets[2,:] .- (boids[i].position[1] .+ ℓ*sin(boids[i].angle+π/2))
+        dy = targets[2,:] .- (boids[i].position[2] .+ ℓ*sin(boids[i].angle+π/2))
         @. vel = boids[i].gamma[1]  / (2π *(dx^2 + dy^2 ))
         @. vels[1,:,:] += dy * vel
         @. vels[2,:,:] -= dx * vel
         dx = targets[1,:] .- (boids[i].position[1] .+ ℓ*cos(boids[i].angle-π/2))
-        dy = targets[2,:] .- (boids[i].position[1] .+ ℓ*sin(boids[i].angle-π/2))
+        dy = targets[2,:] .- (boids[i].position[2] .+ ℓ*sin(boids[i].angle-π/2))
         @. vel = boids[i].gamma[2] / (2π *(dx^2 + dy^2 ))
         @. vels[1,:,:] += dy * vel
         @. vels[2,:,:] -= dx * vel
@@ -73,7 +91,7 @@ function vortex_vel(boids ::Vector{boid{T}}, targets  ;ℓ=0.001) where T<:Real
 end
 
 
-function potential(boids::Vector{boid{T}},targets; ℓ= 0.001) where T<: Real
+function potential(boids::Vector{boid{T}},targets; ℓ= 0.01) where T<: Real
     """
     find vortex potential from sources to a LazyGrids of targets
     mainly for plotting, but might be worth examining wtih Autodiff
@@ -98,9 +116,41 @@ function potential(boids::Vector{boid{T}},targets; ℓ= 0.001) where T<: Real
     end
     pot./(2π)
 end
+
+function streamfunction(boids::Vector{boid{T}},targets; ℓ= 0.01) where T<: Real
+    """
+    find vortex streamlines from sources to a LazyGrids of targets
+    mainly for plotting, but might be worth examining wtih Autodiff
+    """
+    pot = zeros(T, (size(targets[1])...))
+
+    for b in boids            
+        #left vortex
+        dx = targets[1] .- (b.position[1] .+ ℓ*cos(b.angle+π/2))
+        dy = targets[2] .- (b.position[2] .+ ℓ*sin(b.angle+π/2))
+        @. pot += -b.gamma[1] *log(sqrt(dx^2+dy^2))
+        #right vortex
+        dx = targets[1] .- (b.position[1] .+ ℓ*cos(b.angle-π/2))
+        dy = targets[2] .- (b.position[2] .+ ℓ*sin(b.angle-π/2))
+        @. pot += -b.gamma[2] *log(sqrt(dx^2+dy^2))
+    
+    end
+    pot./(2π)
+end
+
+function move_swimmers!(boids::Vector{boid{T}}; Δt=0.1, ℓ= 0.01) where T<: Real
+    """ Find the velocity induced from each swimmer onto the others and 
+        update position via a simple Euler's method """
+    ind_v = vortex_vel(boids;ℓ)    
+    for (i,b) in enumerate(boids)
+        b.v = ind_v[:,i]
+        b.position +=  ind_v[:,i] .* Δt
+    end
+end
+
 #We are using 32-bits throughout
 type =T= Base.Float32
-n_boids = 3
+
 # Make a grid - strictly for visualization (so far)
 xs = LinRange{type}(-2,2,31)
 ys = LinRange{type}(-2,2,21)
@@ -110,148 +160,120 @@ X = repeat(reshape(xs, 1, :), length(ys), 1)
 Y = repeat(ys, 1, length(xs))
 targets = [X,Y]
 
-boids = [boid([1.0, -0.3],  [-1.0,1.0], π/4, [0.0,0.0], [0.0,0.0])]#,
-        #  boid([-0.0,-0.0],[-1.0,1.0],    π/3., [0.0,0.0], [0.0,0.0]),
-        #  boid([-1.0,-1.0],[1.0,-1.0],  0.0, [0.0,0.0], [0.0,0.0])]
 
-
-
-
+#Velocity induced from swimmer to swimmer
 ind_v = vortex_vel(boids)
 field_v = vortex_vel(boids, targets;ℓ=0.5)
 
 field_pot = potential(boids, targets;ℓ=0.5)
-plot(collect(xs),collect(ys), field_pot, st=:contourf)#,clim=(-0.05,0.05))
-scatter!([boids[1].position[1]],[boids[1].position[2]],color=:red)
-atanp(x,y) = begin atan(y,x) end
-plot(X,X,atan,st=:contourf)
-# plotlyjs()
-# plot(contour(
-#     x = collect(xs),
-#     y = collect(ys),
-#     z = field_pot
-# ))
-# X = repeat(reshape(xs, 1, :), length(ys), 1)
-# Y = repeat(ys, 1, length(xs))
-# targets = [X,Y]
-quiver!(targets[1]|>vec,targets[2]|>vec, quiver = (field_v[1,:,:]|>vec,field_v[2,:,:]|>vec),
+stream = streamfunction(boids, targets;ℓ=0.5)
+
+
+#MAKE a few different plotting routines to verify what we would hope to anticipate
+clim =  -sim.Γ₀*(xs[2]-xs[1])*(ys[2]-ys[1])
+begin 
+    #a swimmer going up from origin
+    boids = [boid([0.0, 0.0],  [-sim.Γ₀,sim.Γ₀], π/2, [0.0,0.0], [0.0,0.0])]
+    field_v = vortex_vel(boids, targets)
+    stream = streamfunction(boids, targets)
+    clim =  -sim.Γ₀*(xs[2]-xs[1])*(ys[2]-ys[1])
+    plot(collect(xs),collect(ys), stream, st=:contourf,clim=(clim,-clim))
+    quiver!(targets[1]|>vec,targets[2]|>vec, quiver = (field_v[1,:,:]|>vec,field_v[2,:,:]|>vec),
        xlims=(xs[1],xs[end]),ylims=(ys[1],ys[end]), aspect_ratio= :equal)
-ℓ=0.5
+    # scatter!([boids[1].position[1]],[boids[1].position[2]],markersize=4,color=:red,label="")
+    # scatter!([boids[1].position[1]+ ℓ*cos(boids[1].angle+π/2)],[boids[1].position[2]
+    #             + ℓ*sin(boids[1].angle+π/2)], markersize=4,color=:green,label="left")
+    # scatter!([boids[1].position[1]+ ℓ*cos(boids[1].angle-π/2)],[boids[1].position[2]
+    #             + ℓ*sin(boids[1].angle-π/2)], markersize=4, color=:blue,label="right")
+end
+
+begin 
+    #a diamond of swimmers going up from origin
+    boids = [boid([1.0, 0.0],  [-1.0,1.0], π/2, [0.0,0.0], [0.0,0.0]),
+             boid([-1.0, 0.0],  [-1.0,1.0], π/2, [0.0,0.0], [0.0,0.0]),
+             boid([0.0, 1.0],  [-1.0,1.0], π/2, [0.0,0.0], [0.0,0.0]),
+             boid([0.0, -1.0],  [-1.0,1.0], π/2, [0.0,0.0], [0.0,0.0])]
+    field_v = vortex_vel(boids, targets)
+    stream = streamfunction(boids, targets)
+    plot(collect(xs),collect(ys), stream, st=:contourf)
+    quiver!(targets[1]|>vec,targets[2]|>vec, quiver = (field_v[1,:,:]|>vec,field_v[2,:,:]|>vec),
+       xlims=(xs[1],xs[end]),ylims=(ys[1],ys[end]),color=:green, aspect_ratio= :equal)
+end
+
+begin 
+    #swimmers going to the origin
+    boids = [boid([1.0, 0.0],  [-1.0,1.0], π/1.0, [0.0,0.0], [0.0,0.0]),
+             boid([-1.0, 0.0],  [-1.0,1.0], 0.0, [0.0,0.0], [0.0,0.0]),
+             boid([0.0, 1.0],  [-1.0,1.0], -π/2, [0.0,0.0], [0.0,0.0]),
+             boid([0.0, -1.0],  [-1.0,1.0], π/2, [0.0,0.0], [0.0,0.0])]
+    field_v = vortex_vel(boids, targets)
+    stream = streamfunction(boids, targets)
+    plot(collect(xs),collect(ys), stream, st=:contourf)
+    quiver!(targets[1]|>vec,targets[2]|>vec, quiver = (field_v[1,:,:]|>vec,field_v[2,:,:]|>vec),
+       xlims=(xs[1],xs[end]),ylims=(ys[1],ys[end]),color=:green, aspect_ratio= :equal)
+end
+
+
+#The below is busted
 begin
-    plot(collect(xs),collect(ys), field_pot, st=:contourf)
+    plot(collect(xs),collect(ys), stream, st=:contourf)
     for b in boids
         @show (cos(b.angle),sin(b.angle),b.angle)
-        scatter!([b.position[1]],[b.position[2]],markersize=4,color=:red,label="")
-        scatter!([b.position[1]+ ℓ*cos(b.angle+π/2)],[b.position[2]+ ℓ*sin(b.angle+π/2)]
-                ,markersize=4,color=:green,label="left")
-        scatter!([b.position[1]+ ℓ*cos(b.angle-π/2)],[b.position[2]+ ℓ*sin(b.angle-π/2)]
-                ,markersize=4,color=:blue,label="right")
-        #Why is it only doing quiver in the x-dir?
-        quiver!([b.position[1]], [b.position[2]], quiver= [cos(b.angle),sin(b.angle)])
+        scatter!([b.position[1]],[b.position[2]],markersize=4,color=:red,label="",markershape=:dtriangle)
+        # scatter!([b.position[1]+ ℓ*cos(b.angle+π/2)],[b.position[2]+ ℓ*sin(b.angle+π/2)]
+        #         ,markersize=4,color=:green,label="left")
+        # scatter!([b.position[1]+ ℓ*cos(b.angle-π/2)],[b.position[2]+ ℓ*sin(b.angle-π/2)]
+        #         ,markersize=4,color=:blue,label="right")
+        # #Why is it only doing quiver in the x-dir?
+        # quiver!([b.position[1]], [b.position[2]], quiver= [cos(b.angle),sin(b.angle)])
         
     end
     plot!()
 end
-quiver!()
 
 
 
-abs_v = field_v[1,:,:].^2 .+ field_v[2,:,:].^2
-plot(collect(xs),collect(ys), field_pot, st=:contour)
 
-quiver!(targets[1]|>vec,targets[2]|>vec, quiver = (field_v[1,:,:]|>vec,field_v[2,:,:]|>vec), aspect_ratio= :equal)
-
-#make dipole swimmers
-Γ = [-1,1,-0.1,0.1]
-x = [-0.1, 0.1,-0.1, 0.1,]
-y = [0,0,-0.1,-0.1]
-pos = [x' ; y']
-xs = LinRange{type}(-1,1,21)
-ys = deepcopy(xs)
-targets = ndgrid(xs,ys)
-vel = zeros(type,size(pos))
-init_state = [pos; vel ; Γ']
-ind_v = vortex_vel(init_state)
-field_v = vortex_vel(init_state, targets)
-vort =   diff(field_v[2,:,:],dims=1)[:,2:end] .-diff(field_v[1,:,:],dims=2)[2:end,:]
-# contourf(collect(xs)[2:end],collect(ys)[2:end], vort)
-scatter(init_state[1,:], init_state[2,:], markersize=2)
-quiver!(targets[1]|>vec,targets[2]|>vec, quiver = (field_v[1,:,:]|>vec,field_v[2,:,:]|>vec), aspect_ratio= :equal,
-        xlims=(xs[1],xs[end]),ylims=(ys[1],ys[end]))
-
-n=80
-T = 20
-Δt = 0.01f0
+boids = []
+for i in (-π:π/21 :π)
+    # boids = [boid([cos(i), sin(i)],  [-sim.Γ₀,sim.Γ₀],  i, [0.0,0.0], [0.0,0.0])]
+    push!(boids, boid([cos(i), sin(i)],  [-sim.Γ₀,sim.Γ₀], -i, [0.0,sim.v₀], [0.0,0.0]))
+    # push!(vals,vortex_vel(boids;sim.ℓ)[2])
+end
+boids = boids|>Vector{boid{Float64}}
+Δt =1.0f0
+n = 40
 anim = @animate for i ∈ 1:n
-            Γ = [-1,1,0.1,-0.1] .*(1 .+ cos(2*π*i/T))
-            # @show Γ
-            state = [pos; vel ; Γ']
-            ind_v = vortex_vel(state)
-            f_vels = vortex_vel(state, targets)
-           
-            quiver(targets[1]|>vec,targets[2]|>vec,
+            move_swimmers!(boids; Δt,sim.ℓ)
+            @show boids[1].position[2]
+            f_vels = vortex_vel(boids, targets;sim.ℓ)         
+            stream = streamfunction(boids, targets;sim.ℓ)
+            plot(collect(xs),collect(ys), stream, st=:contourf,clim=(clim,-clim))
+            quiver!(targets[1]|>vec,targets[2]|>vec,
                    quiver = (f_vels[1,:,:]|>vec,f_vels[2,:,:]|>vec),
                    aspect_ratio= :equal,
-                   xlim=(-1,1),ylim=(-1,1));
-            scatter!(state[1,:],state[2,:],
-                    markersize=abs.(state[5,:]),
-                    palette=:balance,label=false);
+                   xlim=(xs[1],xs[end]),ylim=(ys[1],ys[end]));
+            for b in boids        
+                scatter!([b.position[1]],[b.position[2]],markersize=4,color=:red,label="",markershape=:utriangle)
+            end
+            plot
 end
-gif(anim, "vortexswimmer.gif", fps = 20)
+gif(anim, "simple_swimmers.gif", fps = 20)
 # Define some vortices
- num_vort = 200
-samp_inds = [rand(1:num_vort) for i = 1:num_vort÷10]
-x = range(-10,10,num_vort)|>Vector{type}
-y = deepcopy(x).*rand(length(x))
-pos = [x' ; y']
-# Γ = range(1,10,num_vort÷2)|>Vector{Float32}
-# Γ = [reverse(Γ)' Γ']
-Γ = (rand(length(x)).-0.5).*20
-vel = zeros(type,size(pos))
-
-init_state = [pos; vel ; Γ']
-sample_vortices = init_state[:,samp_inds]
 
 
-ind_v = vortex_vel(init_state)
-field_v = vortex_vel(init_state, targets)
-
-quiver(targets[1]|>vec,targets[2]|>vec, quiver = (field_v[1,:,:]|>vec,field_v[2,:,:]|>vec), aspect_ratio= :equal)
-scatter!(init_state[1,:], init_state[2,:], markersize=abs.(init_state[5,:]))
-
-n=150
-Δt = 0.01f0
-state = deepcopy(init_state)
-# old snap shot of all data
-snaps = deepcopy([state...])
-# snaps = deepcopy([state[1:2,:]...])
-
-for i ∈ 1:n
-    v_vels = vortex_vel(state);
-    move_vortices(state, v_vels, Δt);
-    # old for many valued state
-    snaps = [snaps [state...]]
-    # snaps = [ snaps [state[1:2,:]...]] #splat it flat
+quiver([1.0],[2.0],quiver=[0.5,0.5],arrow=true,linewidth=0)
+plot([0.0,1.0],[0.0,2.0],marker=(:utriangle,10))
+begin
+plot()
+d=0.1
+for b in boids
+    # plot!([b.position[1]-d*cos(b.angle)],
+    #     [b.position[2]-d*sin(b.angle)],
+    #     label="",color=:black,seriestype=:scatter)
+    plot!([b.position[1],b.position[1]+d*cos(b.angle)],
+          [b.position[2],b.position[2]+d*sin(b.angle)],
+          arrow = arrow(:closed),label="",color=:blue,linewidth=.1)
 end
-
-anim = @animate for i ∈ 1:n
-    now = reshape(snaps[:,i],(5,num_vort))
-    f_vels = vortex_vel(now ,targets);
-   
-    quiver(targets[1]|>vec,targets[2]|>vec,
-           quiver = (f_vels[1,:,:]|>vec,f_vels[2,:,:]|>vec),
-           aspect_ratio= :equal,
-           xlim=(-20,20),ylim=(-20,20));
-    scatter!(now[1,:],now[2,:],
-            markersize=now[5,:],
-            palette=:balance,label=false);
+plot!()
 end
-gif(anim, "line_vortex.gif", fps = 30)
-
-sources =[-5.0f0  5.0f0 
-           10.f0  10.0f0 
-           0.0f0  0.0f0 
-           0.0f0  0.0f0            
-           100.0f0 100.0f0]
-
-vel = vortex_vel(sources)
