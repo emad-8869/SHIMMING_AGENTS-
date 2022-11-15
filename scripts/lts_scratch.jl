@@ -36,7 +36,7 @@ sim = params(5e-4)
 
 function vortex_vel(boids::Vector{boid{T}} ;ℓ=0.001) where T<:Real
     """
-    find vortex velocity from sources to itself
+    find vortex velocity from sources to the midpoint of the swimmer
     sources - vector of vortex_particle type
     DOES NOT UPDATE STATE of sources
     returns velocity induced field
@@ -64,6 +64,63 @@ function vortex_vel(boids::Vector{boid{T}} ;ℓ=0.001) where T<:Real
     end
     vels
 end
+
+function vel_at_vortices(boids::Vector{boid{T}} ;ℓ=0.001) where T<:Real
+    """
+    find vortex velocity from sources to themselves
+    sources - vector of vortex_particle type
+    DOES NOT UPDATE STATE of sources
+    returns velocity induced field
+    """  
+
+    n =size(boids)[1]
+    vels    = zeros(T, (2,2*n))
+    lefts   = zeros(T, (2,n))
+    rights  = zeros(T, (2,n))
+    # targets = zeros(T,(2,2n)) #(u,v) at (Γl and Γr)
+    vel     = zeros(T, 2*n) 
+    for (i,b) in enumerate(boids)
+        lefts[:,i]  .= (b.position[1] .+ ℓ*cos(b.angle+π/2)),
+                       (b.position[2] .+ ℓ*sin(b.angle+π/2))
+        rights[:,i] .=  (b.position[1] .+ ℓ*cos(b.angle-π/2)),
+                        (b.position[2] .+ ℓ*sin(b.angle-π/2))
+        # targets[:,i] = b.position
+    end
+    targets = [lefts rights]
+    for i in 1:n            
+        dx = targets[1,:] .- lefts[1,i] #(boids[i].position[1] .+ ℓ*cos(boids[i].angle+π/2))
+        dy = targets[2,:] .- lefts[2,i] #(boids[i].position[2] .+ ℓ*sin(boids[i].angle+π/2))
+        @. vel = boids[i].gamma[1]  / (2π *(dx^2 + dy^2 ))   
+        vel[i] = 0.0
+        @. vels[1,:] += dy * vel
+        @. vels[2,:] -= dx * vel
+        dx = targets[1,:] .- rights[1,i] #(boids[i].position[1] .+ ℓ*cos(boids[i].angle-π/2))
+        dy = targets[2,:] .- rights[2,i] #(boids[i].position[2] .+ ℓ*sin(boids[i].angle-π/2))
+        @. vel = boids[i].gamma[2] / (2π *(dx^2 + dy^2 ))
+        vel[i+4] = 0.0 # singularity follows the right vortex position
+        @. vels[1,:] += dy * vel
+        @. vels[2,:] -= dx * vel
+    end
+    vels #the first n are for the left and second n are for the right
+end
+
+function angle_projection(boids::Vector{boid{T}};ℓ=0.001) where T<:Real
+    """
+        find the change it angle for a swimmer based on the velocity difference 
+        found across left and right vortices
+    """
+    n = length(boids)[1]
+    vel = vel_at_vortices(boids;ℓ)
+    left,right = vel[:,1:n],vel[:,n+1:end]
+    #project the velocity difference onto the induced velocity of the swimmer 
+    dir = zeros(T,(2,n))
+    for (i,b) in enumerate(boids)
+        dir[:,i]  .= [cos(b.angle), sin(b.angle)]
+    end
+    alphadot = (right - left) ⋅ dir
+end
+
+
 
 function vortex_vel(boids ::Vector{boid{T}}, targets  ;ℓ=0.001) where T<:Real
     """
@@ -145,6 +202,7 @@ function move_swimmers!(boids::Vector{boid{T}}; Δt=0.1, ℓ= 0.01) where T<: Re
     for (i,b) in enumerate(boids)
         b.v = ind_v[:,i]
         b.position +=  ind_v[:,i] .* Δt
+        # b.angle += (cos(b.angle)*b.v[1] + sin(b.angle)*b.v[2]) .*Δt #eqn 2.b
     end
 end
 
@@ -153,7 +211,7 @@ type =T= Base.Float32
 
 # Make a grid - strictly for visualization (so far)
 xs = LinRange{type}(-2,2,31)
-ys = LinRange{type}(-2,2,21)
+ys = LinRange{type}(-2,2,31)
 targets = ndgrid(xs,ys)
 #do it a different way
 X = repeat(reshape(xs, 1, :), length(ys), 1)
@@ -170,7 +228,7 @@ stream = streamfunction(boids, targets;ℓ=0.5)
 
 
 #MAKE a few different plotting routines to verify what we would hope to anticipate
-clim =  -sim.Γ₀*(xs[2]-xs[1])*(ys[2]-ys[1])
+clim =  -sim.Γ₀*(xs[2]-xs[1])*(ys[2]-ys[1]) #color limit for the contour plots
 begin 
     #a swimmer going up from origin
     boids = [boid([0.0, 0.0],  [-sim.Γ₀,sim.Γ₀], π/2, [0.0,0.0], [0.0,0.0])]
@@ -233,22 +291,25 @@ end
 
 
 
+begin 
+    boids = []
+    for i in (0)
+        # boids = [boid([cos(i), sin(i)],  [-sim.Γ₀,sim.Γ₀],  i, [0.0,0.0], [0.0,0.0])]
+        push!(boids, boid([i, -1.0],  [-sim.Γ₀,sim.Γ₀], π/2.0, [0.0,sim.v₀], [0.0,0.0]))
+        # push!(vals,vortex_vel(boids;sim.ℓ)[2])
+    end
 
-boids = []
-for i in (-π:π/21 :π)
-    # boids = [boid([cos(i), sin(i)],  [-sim.Γ₀,sim.Γ₀],  i, [0.0,0.0], [0.0,0.0])]
-    push!(boids, boid([cos(i), sin(i)],  [-sim.Γ₀,sim.Γ₀], -i, [0.0,sim.v₀], [0.0,0.0]))
-    # push!(vals,vortex_vel(boids;sim.ℓ)[2])
+    boids = boids|>Vector{boid{Float64}}
 end
-boids = boids|>Vector{boid{Float64}}
-Δt =1.0f0
+Δt =3.0f0
 n = 40
 anim = @animate for i ∈ 1:n
             move_swimmers!(boids; Δt,sim.ℓ)
-            @show boids[1].position[2]
+            # @show boids[1].position[2]
+            @show boids[1].angle, boids[1].v
             f_vels = vortex_vel(boids, targets;sim.ℓ)         
             stream = streamfunction(boids, targets;sim.ℓ)
-            plot(collect(xs),collect(ys), stream, st=:contourf,clim=(clim,-clim))
+            plot(collect(xs),collect(ys), stream, st=:contourf)#,clim=(clim,-clim))
             quiver!(targets[1]|>vec,targets[2]|>vec,
                    quiver = (f_vels[1,:,:]|>vec,f_vels[2,:,:]|>vec),
                    aspect_ratio= :equal,
@@ -277,3 +338,13 @@ for b in boids
 end
 plot!()
 end
+
+
+#eq 2a is encoded in the function vortex_vel, but angle change is missing
+for b in boids
+    @show (cos(b.angle)*b.v[1] - sin(b.angle)*b.v[2])
+
+end
+
+
+
