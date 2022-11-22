@@ -1,4 +1,4 @@
-module swimming_agents
+module FiniteDipole
 
 export boid, params
 export vortex_to_grid_velocity, vortex_to_swimmer_midpoint_velocity, vortex_to_vortex_velocity
@@ -27,9 +27,8 @@ Base.@kwdef mutable struct params
         new(ℓ,g0,ga,v0,v0*0.1,10ℓ)
     end 
 end 
-# Print function for a boid
-Base.show(io::IO,b::boid) = print(io,"Boid (x,y,α,Γlr,v)=($(b.position),$(b.angle),$(b.gamma),$(b.v))")
 
+Base.show(io::IO,b::boid) = print(io,"Boid (x,y,α,Γlr,v)=($(b.position),$(b.angle),$(b.gamma),$(b.v))")
 
 function vortex_to_swimmer_midpoint_velocity(boids::Vector{boid{T}} ;ℓ=0.001) where T<:Real
     """
@@ -101,8 +100,6 @@ function vortex_to_vortex_velocity(boids::Vector{boid{T}} ;ℓ=0.001) where T<:R
     vels #the first n are for the left and second n are for the right
 end
 
-
-
 function angle_projection(boids::Vector{boid{T}},lrvel::Matrix{T};ℓ=0.001) where T<:Real
     """
         find the change it angle for a swimmer based on the velocity difference 
@@ -119,8 +116,6 @@ function angle_projection(boids::Vector{boid{T}},lrvel::Matrix{T};ℓ=0.001) whe
     alphadot 
 end
 
-
-
 function self_induced_velocity(boids::Vector{boid{T}}; ℓ=0.001) where T<:Real
     """
     Find velocity that an agent has onto itself
@@ -132,8 +127,6 @@ function self_induced_velocity(boids::Vector{boid{T}}; ℓ=0.001) where T<:Real
     vel
 # [-diff(b.gamma).*[cos(b.angle), -sin(b.angle)]'/(2π*ℓ) for b in boids]
 end
-
-
 
 function vortex_to_grid_velocity(boids ::Vector{boid{T}}, targets  ;ℓ=0.001) where T<:Real
     """
@@ -159,7 +152,6 @@ function vortex_to_grid_velocity(boids ::Vector{boid{T}}, targets  ;ℓ=0.001) w
     end
     vels
 end
-
 
 function potential(boids::Vector{boid{T}},targets; ℓ= 0.001) where T<: Real
     """
@@ -240,8 +232,6 @@ function move_swimmers!(boids::Vector{boid{T}}; Δt=0.1, ℓ= 0.001) where T<: R
     # end
 end
 
-
-###### <---- transition state codes for pompds -----> #########
 function change_bearing_speed(sim)
     """
     eqns 5.a,b 
@@ -251,6 +241,5 @@ function change_bearing_speed(sim)
     ΓT   = sim.ρ/(2*π*sim.ℓ)
     Γadd,ΓT    
 end
-
 
 end # module

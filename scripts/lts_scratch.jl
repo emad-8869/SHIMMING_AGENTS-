@@ -3,7 +3,10 @@ using Plots
 using SparseArrays
 # using PlotlyJS
 using LinearAlgebra
-
+include(".\\src\\FiniteDipole.jl")
+using FiniteDipole
+# TODO : Nate add in freestream velocity field calcs for determining if the 
+# angle_projection methods work -add tests
 Base.@kwdef mutable struct boid{T<:Real}
         position::Vector{T} #2-D to start
         gamma::Vector{T} #Γ_l Γ_r
@@ -286,6 +289,14 @@ function Base.:+(b::Boid,circ::Tuple)
 end
 
 function transition(boids::Vector{boid{T}}, gamma::ΔΓ)
+    #define a null state --.
+    # ?!
+    if any(rewards.(boids) != 0)
+        return Deterministic(null)
+    end
+
+    num_a = length(A)
+    next_states = Vector
     for b in boids
 
     end
