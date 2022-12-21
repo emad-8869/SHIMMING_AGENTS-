@@ -13,6 +13,13 @@ requirements:
        this can be avoided and sped up sig if done right
 4. easy to setup discrete motions -> faster, slower, left, right
 5. invertable? or just attach a FMM code for acceleration
+6. Write a version of Tianjuan's BEM to scrape inviscid data from 
+7. POD/PCA or DMD on the vortex distro to define a rom
+8. ROM -> P(NN) -> Hydrodynamic performance metrics  
+9. Emit a vortex at reg interval
+
+P(Γ((x,y)(t))) we want to reduce Γ while still getting pressure along the body
+
 """
 #rows left right
 vort = [-1 1 
@@ -66,13 +73,13 @@ plot!(right[1,:],right[2,:],seriestype=:scatter,label="right")
 a0 = 0.1
 a = [0.367,0.323,0.310]
 f = k = 1
-h(x,t) = a0*A(x,a)*sin(2π*(k*x - f*t))
-A(x,a) = a[1] + a[2]*x + a[3]*x^2
+h(x,t) = a0*amp(x,a)*sin(2π*(k*x - f*t))
+amp(x,a) = a[1] + a[2]*x + a[3]*x^2
 
 
 ang = x -> h(x,a)
 
-plot(h.(LinRange(0,1,25),0.0))
+plot(h.(LinRange(0,1,64),0.0))
 
 begin 
     n = 25
