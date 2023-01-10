@@ -1,7 +1,7 @@
-# export SwimmerEnv
-using ReinforcementLearning
-using Random
-using StableRNGs
+export SwimmerEnv
+# using ReinforcementLearning
+# using Random
+# using StableRNGs
 using IntervalSets
 """
 Minimum to setup for the SwimmerEnv
@@ -91,10 +91,12 @@ Random.seed!(env::SwimmingEnv, seed) = Random.seed!(env.rng, seed)
 RLBase.action_space(env::SwimmingEnv) = env.action_space
 RLBase.state_space(env::SwimmingEnv) = env.observation_space
 RLBase.reward(env::SwimmingEnv) = env.reward
-RLBase.is_terminated(env::SwimmingEnv) = isapprox(env.state[1], 0.0, atol=env.params.ℓ/4.) #within a quarter of a fish?
-function RLBase.state(env::SwimmingEnv) 
+RLBase.is_terminated(env::SwimmingEnv) = isapprox(env.state[1], 0.0, atol=env.params.ℓ/4.) || env.done #within a quarter of a fish?
+
+function RLBase.state(env::SwimmingEnv{A,T}) where {A,T} 
     dn,θn =  dist_angle(env.swimmer,env.target)
-    (clamp(dn, 0, 39*env.params.ℓ*sqrt(2π)), clamp(θn, 0 , 2π) )
+    #39 is a magic number?????
+    [clamp(dn, 0, 39*env.params.ℓ*sqrt(2π))|>T, clamp(θn, 0 , 2π)|>T ]
 end
 
 function RLBase.reset!(env::SwimmingEnv{A,T}) where {A,T}
@@ -110,7 +112,7 @@ end
 
 function (env::SwimmingEnv)(a::Union{Int, AbstractFloat})
     @assert a in env.action_space
-    env.action = change_circulation(env, a)
+    env.action = change_circulation!(env, a)
     _step!(env, env.action)
 end
 
@@ -130,15 +132,18 @@ function _step!(env::SwimmingEnv, a)
         b.angle += angles[i] .* env.params.Δt #eqn 2.b
     end
     dn,θn = dist_angle(env.swimmer, env.target)
-        
-    
+    # NATE : TODO ADD TARGET MOTION HERE - below is a crappy circle 
+    # path(x,y) = env.params.ℓ.*[cos(x),sin(y)]
+    # a = path.(range(0,2pi,env.max_steps),range(0,2pi,env.max_steps))
+    # env.target = a[env.t]
+
     env.state[1] = clamp(dn, 0, 39*env.params.ℓ*sqrt(2π))
     env.state[2] = clamp(θn, 0 , 2π)        
 
-
+    
     costs = env.params.wa*(1- dn/env.params.ℓ) + env.rewards[Int(a)]*env.params.wd 
     env.done = env.t >= env.max_steps
-    env.reward = costs
+    env.reward = -costs
     nothing
 end
 
@@ -161,17 +166,17 @@ function dist_angle(agent::FD_agent, target)
     
 end
 
-function change_circulation(env::SwimmingEnv{<:Base.OneTo}, a::Int)
+function change_circulation!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
     if a == 1
         nothing
     elseif a == 2   
-        env.swimmer.gamma + [env.params.Γa , env.params.Γa]
+        env.swimmer.gamma += [env.params.Γa , env.params.Γa]
     elseif a == 3  
-        env.swimmer.gamma + [-env.params.Γa, -env.params.Γa]
+        env.swimmer.gamma += [-env.params.Γa, -env.params.Γa]
     elseif a == 4  
-        env.swimmer.gamma + [env.params.Γt, -env.params.Γt]
+        env.swimmer.gamma += [env.params.Γt, -env.params.Γt]
     elseif a == 5   
-        env.swimmer.gamma + [-env.params.Γt, env.params.Γt]
+        env.swimmer.gamma += [-env.params.Γt, env.params.Γt]
     else 
         @error "unknown action of $action"
     end 

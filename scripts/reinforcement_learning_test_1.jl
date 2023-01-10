@@ -2,6 +2,7 @@ using ReinforcementLearning
 using StableRNGs
 using Flux
 using Flux.Losses
+using Plots
 
 function RL.Experiment(
     ::Val{:JuliaRL},
@@ -10,7 +11,7 @@ function RL.Experiment(
     ::Nothing;
     seed = 123,
 )
-    rng = StableRNG(123)
+    rng = StableRNG(seed)
     env2 = PendulumEnv(continuous = false, max_steps = 5000, rng = rng)
     ns, na = length(state(env)), length(action_space(env))
     agent = Agent(
@@ -47,8 +48,10 @@ function RL.Experiment(
 
     Experiment(agent, env, stop_condition, hook, "")
 end
-using Plots
+
+#+ tangle=false
+
+# pyplot() #hide
 ex = E`JuliaRL_BasicDQN_PendulumDiscrete`
 run(ex)
 plot(ex.hook.rewards)
-
