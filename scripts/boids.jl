@@ -1,4 +1,6 @@
 #IMPORT other libraries
+
+#OLD BOIDS CODE ))) NO BUENO
 using Statistics
 using LinearAlgebra
 using Plots

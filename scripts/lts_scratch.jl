@@ -3,7 +3,7 @@ using Plots
 using SparseArrays
 # using PlotlyJS
 using LinearAlgebra
-include(".\\src\\FiniteDipole.jl")
+include("..\\src\\FiniteDipole.jl")
 using FiniteDipole
 # TODO : Nate add in freestream velocity field calcs for determining if the 
 # angle_projection methods work -add tests
@@ -228,43 +228,49 @@ function add_lr(v2v)
     (v2v[:,1:n] + v2v[:,n+1:end])/2.
 end
 
-function move_swimmers!(boids::Vector{boid{T}}; Δt=0.1, ℓ= 0.001) where T<: Real
+function move_swimmers!(boids::Vector{boid{T}}; Δt=0.1, ℓ= 5e-4,target = (10,0)) where T<: Real
     """ Find the velocity induced from each swimmer onto the others and 
         update position via a simple Euler's method """
-
-    target = (10,0)
+    
     v2v = vortex_to_vortex_velocity(boids;ℓ)
-    siv = self_induced_velocity(boids;ℓ)
     avg_v = add_lr(v2v)
+    siv = self_induced_velocity(boids;ℓ)    
     ind_v = siv + avg_v #eqn 2.a
     angles = angle_projection(boids,v2v)
-    a_desired = [atan(y,x) for (x,y) in [target .- b.position for b in boids]]
-    adotdes = (a_desired .- [b.angle for b in boids])/Δt
+
     
-    for (i,b) in enumerate(boids)
+    for (i,b) in enumerate(boids)l
         b.v = ind_v[:,i]
         b.position +=  ind_v[:,i] .* Δt
-        b.angle += angles[i]  +adotdes[i] #eqn 2.b
+        b.angle += angles[i]  #eqn 2.b
     end
-
-    #Aokin- model
-    
-    # Γadd = π*ℓ^2*(adotdes - angles)
-    # for (i,b) in enumerate(boids)
-    #     b.gamma[1] += Γadd[i]  
-    #     b.gamma[2] -= Γadd[i]
-    # end
 end
 
+begin 
+    n = length(boids)[1]
+    lrvel = vortex_to_vortex_velocity(boids)
+    left,right = lrvel[:,1:n],lrvel[:,n+1:end]
+    #project the velocity difference onto the induced velocity of the swimmer     
+    alphadot = zeros(typeof(lrvel[1]), n)
+    #define a freestream and background flow bgf
+    U = 0.0025
+    flowθ = π/4.0 
+    bgf = U* [cos(flowθ), sin(flowθ)]
+    for (i,b) in enumerate(boids)
+        alphadot[i]  = sum(b.gamma)/(2π*ℓ^2) +  ((right[:,i] - left[:,i]).+ bgf)⋅[cos(b.angle), sin(b.angle)]        
+    end
+    alphadot 
+
+end
 
 ###### <---- transition state codes for pompds -----> #########
 function change_bearing_speed(sim)
     """
-    eqns 5.a,b 
+    eqns 5.a,b _call once to set values for the sim
     """
     Γadd = sim.vₐ/sim.v₀ *sim.Γ₀
     ΓT   = sim.ρ/(2*π*sim.ℓ)
-    Γadd,ΓT    
+    Γadd, ΓT    
 end
 
 #ENUMERATE THE ACTIONS  eqns 4
@@ -283,7 +289,7 @@ A = [CRUISE, FASTER, SLOWER, LEFT, RIGHT]
 @show CIRC_CHANGE[CRUISE] 
 
 #overload + for changing the circulation of a boid
-function Base.:+(b::Boid,circ::Tuple) 
+function Base.:+(b::boid,circ::Tuple) 
     b.gamma[1] += circ[1]
     b.gamma[2] += circ[2]
 end
@@ -311,43 +317,13 @@ function rewards(b::boid, a = missing)
 end
 ###### <---- transition state codes for pompds -----> #########
 
-begin 
-    boids = []
-    for i in -1
-        # boids = [boid([cos(i), sin(i)],  [-sim.Γ₀,sim.Γ₀],  i, [0.0,0.0], [0.0,0.0])]
-        push!(boids, boid([i, -1.0],  [-sim.Γ₀,sim.Γ₀], π/2.0, [0.0,sim.v₀], [0.0,0.0]))
-        # push!(vals,vortex_vel(boids;sim.ℓ)[2])
-    end
 
-    boids = boids|>Vector{boid{Float64}}
-Δt =5.0f0
-n = 100
-anim = @animate for i ∈ 1:n
-            move_swimmers!(boids; Δt,sim.ℓ)
-            
-            @show boids[1].angle, boids[1].gamma
-            f_vels = vortex_to_grid_velocity(boids, targets;sim.ℓ)         
-            # stream = streamfunction(boids, targets;sim.ℓ)
-            # plot(collect(xs),collect(ys), stream, st=:contourf)#,clim=(clim,-clim))
-            # quiver!(targets[1]|>vec,targets[2]|>vec,
-            #        quiver = (f_vels[1,:,:]|>vec,f_vels[2,:,:]|>vec),
-            #        aspect_ratio= :equal,
-            #        xlim=(xs[1],xs[end]),ylim=(ys[1],ys[end]));
-            plot( xlim=(-10,10),ylim=(-10,10))
-            for b in boids        
-                scatter!([b.position[1]],[b.position[2]],markersize=4,color=:red,label="",markershape=:utriangle)
-            end
-            plot
-end
-gif(anim, "simple_swimmers.gif", fps = 20)
-# Define some vortices
-end
 #We are using 32-bits throughout
 type =T= Base.Float32
 
 # Make a grid - strictly for visualization (so far)
-xs = LinRange{type}(-2,2,31)
-ys = LinRange{type}(-2,2,31)
+xs = LinRange{type}(0,1,31)
+ys = LinRange{type}(0,1,31)
 targets = ndgrid(xs,ys)
 #do it a different way
 X = repeat(reshape(xs, 1, :), length(ys), 1)
@@ -357,17 +333,49 @@ targets = [X,Y]
 
 #Velocity induced from swimmer to swimmer
 ind_v = vortex_to_swimmer_midpoint_velocity(boids)
-field_v = vortex_to_grid_velocity(boids, targets;ℓ=0.5)
+field_v = vortex_to_grid_velocity(boids, targets;ℓ=5e-4)
 
-field_pot = potential(boids, targets;ℓ=0.5)
-stream = streamfunction(boids, targets;ℓ=0.5)
+field_pot = potential(boids, targets;ℓ=5e-4)
+stream = streamfunction(boids, targets;ℓ=5e-4)
 
+begin 
+    boids = [boid([0.51, 0.4],  [-swim.Γ₀*2.,swim.Γ₀*2.], π/2.0, [0.0,swim.v₀], [0.0,0.0]),
+             boid([0.49, 0.6],  [-swim.Γ₀,swim.Γ₀], -π/2.0, [0.0,-sim.v₀], [0.0,0.0]),]
+    # for i in -1
+    #     # boids = [boid([cos(i), sin(i)],  [-sim.Γ₀,sim.Γ₀],  i, [0.0,0.0], [0.0,0.0])]
+    #     push!(boids, boid([0.5, 0.5],  [-sim.Γ₀,sim.Γ₀], π/2.0, [0.0,sim.v₀], [0.0,0.0]))
+    #     # push!(vals,vortex_vel(boids;sim.ℓ)[2])
+    # end
 
+    # boids = boids|>Vector{boid{Float64}}
+    Δt =0.1f0
+    n = 100
+    anim = @animate for i ∈ 1:n
+                move_swimmers!(boids; Δt,sim.ℓ)
+                
+                # @show sqrt(sum(abs2,boids[1].position .- boids[2].position))
+                @show boids[1].position[2],boids[2].position[2]
+                f_vels = vortex_to_grid_velocity(boids, targets;sim.ℓ)         
+                stream = streamfunction(boids, targets;sim.ℓ)
+                plot(collect(xs),collect(ys), stream, st=:contourf)#,clim=(clim,-clim))
+                # quiver!(targets[1]|>vec,targets[2]|>vec,
+                #        quiver = (f_vels[1,:,:]|>vec,f_vels[2,:,:]|>vec),
+                #        aspect_ratio= :equal,
+                #        xlim=(xs[1],xs[end]),ylim=(ys[1],ys[end]));
+                plot!( xlim=(0,1),ylim=(0,1))
+                for b in boids        
+                    scatter!([b.position[1]],[b.position[2]],markersize=4,color=:red,label="",markershape=:utriangle)
+                end
+                plot
+    end
+    gif(anim, "simple_swimmers.gif", fps = 50)
+
+end
 #MAKE a few different plotting routines to verify what we would hope to anticipate
 clim =  -sim.Γ₀*(xs[2]-xs[1])*(ys[2]-ys[1]) #color limit for the contour plots
 begin 
     #a swimmer going up from origin
-    boids = [boid([0.0, 0.0],  [-sim.Γ₀,sim.Γ₀], π/2, [0.0,0.0], [0.0,0.0])]
+    boids = [boid([0.5, 0.5],  [-sim.Γ₀,sim.Γ₀], π/2, [0.0,0.0], [0.0,0.0])]
     field_v = vortex_to_grid_velocity(boids, targets)
     stream = streamfunction(boids, targets)
     clim =  -sim.Γ₀*(xs[2]-xs[1])*(ys[2]-ys[1])
@@ -379,8 +387,8 @@ end
 
 #test case #validate eqn 2a for a sinlge swimmer
 begin
-    boids = [boid([1.0, 0.0],  [-1.0,1.0], π/2, [0.0,0.0], [0.0,0.0]),
-             boid([-1.0, 0.0],  [-1.0,1.0], π/2, [0.0,0.0], [0.0,0.0])]
+    boids = [boid([0.45, 0.5],  [-1.0,1.0], π/2, [0.0,0.0], [0.0,0.0]),
+             boid([0.55, 0.5],  [-1.0,1.0], π/2, [0.0,0.0], [0.0,0.0])]
     ind_v = vortex_to_swimmer_midpoint_velocity(boids)
     self_v = self_induced_velocity(boids)
     v2v = vortex_to_vortex_velocity(boids)
@@ -392,16 +400,18 @@ begin
     field_v = vortex_to_grid_velocity(boids, targets)
     stream = streamfunction(boids, targets)
     clim =  -sim.Γ₀*(xs[2]-xs[1])*(ys[2]-ys[1])
-    plot(collect(xs),collect(ys), stream, st=:contourf)
-    quiver!(targets[1]|>vec,targets[2]|>vec, quiver = (field_v[1,:,:]|>vec,field_v[2,:,:]|>vec),
+    a = plot(collect(xs),collect(ys), stream, st=:contourf)
+    quiver!(a,targets[1]|>vec,targets[2]|>vec, quiver = (field_v[1,:,:]|>vec,field_v[2,:,:]|>vec),
        xlims=(xs[1],xs[end]),ylims=(ys[1],ys[end]), aspect_ratio= :equal)
+    a
     @show ind_v
     @show self_v+lr #this is the perferred decomposition; allows for angle angle_projection
 end
-
+a
 begin 
     #test scripts for updating the vorticity and angle based on eqns 6
     #set a (x,y) pair as a goal to swim to 
+    ℓ = 0.001
     target = (100,100)
     a_desired = [atan(y,x) for (x,y) in [target .- b.position for b in boids]]
     adotdes = (a_desired .- [b.angle for b in boids])/Δt

@@ -96,7 +96,7 @@ RLBase.is_terminated(env::SwimmingEnv) = isapprox(env.state[1], 0.0, atol=env.pa
 function RLBase.state(env::SwimmingEnv{A,T}) where {A,T} 
     dn,θn =  dist_angle(env.swimmer,env.target)
     #39 is a magic number?????
-    [clamp(dn, 0, 39*env.params.ℓ*sqrt(2π))|>T, clamp(θn, 0 , 2π)|>T ]
+    [clamp(dn, 0, 39.99*env.params.ℓ*sqrt(2π))|>T, clamp(θn, 0 , 2π)|>T ]
 end
 
 function RLBase.reset!(env::SwimmingEnv{A,T}) where {A,T}
@@ -137,7 +137,7 @@ function _step!(env::SwimmingEnv, a)
     # a = path.(range(0,2pi,env.max_steps),range(0,2pi,env.max_steps))
     # env.target = a[env.t]
 
-    env.state[1] = clamp(dn, 0, 39*env.params.ℓ*sqrt(2π))
+    env.state[1] = clamp(dn, 0, 39.99*env.params.ℓ*sqrt(2π))
     env.state[2] = clamp(θn, 0 , 2π)        
 
     

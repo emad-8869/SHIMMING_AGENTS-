@@ -27,12 +27,12 @@ State(x::Int,y::Int) = State(x,y,false)
 end
 
 # Had defaults for the constructor, but we can force values too
-Params = GridWorldParameters((10, 10),State(-1,-1), 0.7)
+Params = GridWorldParameters((20, 10),State(-1,-1), 0.7)
 
 null = State(-1, -1)
 
 # a Vector of all existing states, with one additional state(-1,-1) outside the GridWorld.
-S = [[State(x, y) for x = 1:10, y = 1:10]..., null]
+# S = [[State(x, y) for x = 1:10, y = 1:10]..., null]
 # Now we can use our params to programmatically set up our state-space
 S = [[State(x, y) for x=1:Params.size[1], y=1:Params.size[2]]...,null]
 
@@ -113,13 +113,21 @@ function T(s::State, a::Action)
         return 10
     elseif s == State(8,8)
         return 3
+    elseif s == State(11,2) || s == State(11,3) || s == State(11,4) || s == State(11,5) || s == State(11,6) || s == State(11,7) ||
+        s == State(11,8) || s == State(11,9)
+        return -10
+    elseif s == State( 17, 5)
+        return 250
+    elseif s == State( 16, 6) || s == State( 17, 6) || s == State( 18, 6) || s == State( 18, 5)||
+        s == State( 18, 4) || s == State( 17, 4) || s== State(16,4)
+        return -10
     else
         return 0 
     end   
  end
  
 # set discount factor
-gamma = 0.95
+gamma = 0.9
 
 termination(s::State) = s == null
 abstract type GridWorld <: MDP{State, Action} end
@@ -135,22 +143,28 @@ q_mdp = QuickMDP(GridWorld,
     isterminal = termination
 )
 
-Random.seed!(1) # for reproduce the result
+Random.seed!(101) # for reproduce the result
+begin
+    q_alpha = 0.8
 
-q_alpha = 0.9
+    # number of episodes
+    q_n_episodes = 1000 
 
-# number of episodes
-q_n_episodes = 1000 
+    q_solver = QLearningSolver(
+        n_episodes = q_n_episodes,
+        learning_rate = q_alpha,
+        exploration_policy = EpsGreedyPolicy(q_mdp, 0.5),
+        verbose = false
+    )
+    # solve mdp
+    q_policy = solve(q_solver, q_mdp)
 
-q_solver = QLearningSolver(
-    n_episodes = q_n_episodes,
-    learning_rate = q_alpha,
-    exploration_policy = EpsGreedyPolicy(q_mdp, 0.5),
-    verbose = true
-)
-# solve mdp
-q_policy = solve(q_solver, q_mdp)
-
+    heatmap(reshape(mat,Params.size)',color=:turbo)
+    for x in 1:Params.size[1], y in 1:Params.size[2]
+        quiver!([x],[y],quiver=quivD[action(q_policy,State(x,y))], label="")        
+    end
+    plot!()
+end
 
 ### state plotting stuff
 using Plots
