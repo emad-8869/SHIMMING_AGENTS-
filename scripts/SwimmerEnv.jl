@@ -1,7 +1,7 @@
 export SwimmerEnv
-# using ReinforcementLearning
-# using Random
-# using StableRNGs
+using ReinforcementLearning
+using Random
+using StableRNGs
 using IntervalSets
 """
 Minimum to setup for the SwimmerEnv
@@ -17,7 +17,7 @@ reset!(env::YourEnv)
 include("..\\src\\FiniteDipole.jl")
 struct SwimmerParams{T}
     #parameters for specific set of swimming agents
-    ℓ ::T#dipole length - vortex to vortex
+    ℓ ::T #dipole length - vortex to vortex
     Γ0::T #init circulation
     Γa::T #incremental circulation
     v0::T #cruise velocity
@@ -28,6 +28,7 @@ struct SwimmerParams{T}
     wd ::T
     D ::T # max distance state ; \theta is boring - just cut up 2π
     Δt :: T
+    
 end 
 #Default constructor uses
 SwimmerParams(ℓ,T) = SwimmerParams(ℓ/2,   #ℓ
@@ -61,12 +62,12 @@ mutable struct SwimmingEnv{A,T,R} <: AbstractEnv
 end
 
 
-function SwimmerEnv(; T = Float32,  max_steps = 200, continuous::Bool = false, n_actions::Int = 5, rng = Random.GLOBAL_RNG, ℓ=5e-4)
+function SwimmerEnv(; T = Float32,  max_steps = 500, n_actions::Int = 5, rng = Random.GLOBAL_RNG, ℓ=5e-4, target=[5.0,0.0])
     # high = T.([1, 1, max_speed])
     ℓ = convert(T,ℓ)
     action_space = Base.OneTo(n_actions) # A = [CRUISE, FASTER, SLOWER, LEFT, RIGHT]
+    ηs = [0, -1, 1, -1, -1] # [CRUISE, FASTER, SLOWER, LEFT, RIGHT]
     swim =  SwimmerParams(ℓ,T)
-    ηs = [0,-1,1,-1,-1] # [CRUISE, FASTER, SLOWER, LEFT, RIGHT]
     env = SwimmingEnv(swim,
         action_space,
         0|>T,
@@ -80,7 +81,9 @@ function SwimmerEnv(; T = Float32,  max_steps = 200, continuous::Bool = false, n
         ηs,
         n_actions,
         FD_agent(Vector{T}([0.0,0.0]),Vector{T}([swim.Γ0,-swim.Γ0]), T(π/2), Vector{T}([0.0,0.0]),Vector{T}([0.0,0.0])), 
-        Vector{T}([0.0, 5.0 * swim.D])
+        # Vector{T}([-5.0 * swim.D, 0.0])
+        # Vector{T}([5.0 * swim.D, 0.0])
+        convert(Vector{T}, target.*swim.D)
     )
     reset!(env)
     env
@@ -91,22 +94,30 @@ Random.seed!(env::SwimmingEnv, seed) = Random.seed!(env.rng, seed)
 RLBase.action_space(env::SwimmingEnv) = env.action_space
 RLBase.state_space(env::SwimmingEnv) = env.observation_space
 RLBase.reward(env::SwimmingEnv) = env.reward
-RLBase.is_terminated(env::SwimmingEnv) = isapprox(env.state[1], 0.0, atol=env.params.ℓ/4.) || env.done #within a quarter of a fish?
+# RLBase.is_terminated(env::SwimmingEnv) = isapprox(env.state[1], 0.0, atol=env.params.ℓ/4.) || env.done #within a quarter of a fish?
+RLBase.is_terminated(env::SwimmingEnv) = env.done #within a quarter of a fish?
 
 function RLBase.state(env::SwimmingEnv{A,T}) where {A,T} 
     dn,θn =  dist_angle(env.swimmer,env.target)
-    #39 is a magic number?????
-    [clamp(dn, 0, 39.99*env.params.ℓ*sqrt(2π))|>T, clamp(θn, 0 , 2π)|>T ]
+    #10 is a magic number?????
+    [clamp(dn, 0, env.observation_space[1].right)|>T, mod2pi(θn)|>T ]     
 end
 
 function RLBase.reset!(env::SwimmingEnv{A,T}) where {A,T}
-    #go back to the original state, not random?
-    env.state[1] = (rand(env.rng, T)) *10*env.params.D
-    env.state[2] = 2π * (rand(env.rng, T) )
-    env.action = one(T)
+    #go back to the original state, not random?  
+    θ = rand()*2π  #π/2 old
+    r = rand()*env.observation_space[1].right #0.0 old
+
+    env.swimmer = FD_agent(Vector{T}([state2xy(r,θ)...]),Vector{T}([env.params.Γ0,-env.params.Γ0]), 
+                                     T(θ), Vector{T}([0.0,0.0]),Vector{T}([0.0,0.0]))
+    dn,θn = dist_angle(env.swimmer, env.target)    
+    env.state[1] = clamp(dn, 0, env.observation_space[1].right )
+    env.state[2] = mod2pi(θn)       
+    env.action = zero(T)
     env.t = 0
     env.done = false
     env.reward = zero(T)
+    #if we add a dynamic target throw code here too!
     nothing
 end
 
@@ -118,8 +129,6 @@ end
 
 function _step!(env::SwimmingEnv, a)
     env.t += 1
-    r, th = env.state
-   
     
     v2v = vortex_to_vortex_velocity([env.swimmer];env.params.ℓ)   
     avg_v = add_lr(v2v) 
@@ -129,21 +138,21 @@ function _step!(env::SwimmingEnv, a)
     for (i,b) in enumerate([env.swimmer])
         # b.v = ind_v[:,i]
         b.position += ind_v[:,i] .* env.params.Δt
-        b.angle += angles[i] .* env.params.Δt #eqn 2.b
+        b.angle = mod2pi(b.angle + angles[i] .* env.params.Δt) #eqn 2.b
     end
     dn,θn = dist_angle(env.swimmer, env.target)
     # NATE : TODO ADD TARGET MOTION HERE - below is a crappy circle 
-    # path(x,y) = env.params.ℓ.*[cos(x),sin(y)]
-    # a = path.(range(0,2pi,env.max_steps),range(0,2pi,env.max_steps))
-    # env.target = a[env.t]
-
-    env.state[1] = clamp(dn, 0, 39.99*env.params.ℓ*sqrt(2π))
-    env.state[2] = clamp(θn, 0 , 2π)        
+    # path(omega,t) = omega*env.params.ℓ*5.0 .*[-sin(omega*t),cos(omega*t)]    
+    # env.target += path(2π, env.t/env.max_steps) .* env.params.Δt
+    
+    env.state[1] = clamp(dn, 0, env.observation_space[1].right ) #make sure it is in the domain
+    env.state[2] = mod2pi(θn)       
 
     
-    costs = env.params.wa*(1- dn/env.params.ℓ) + env.rewards[Int(a)]*env.params.wd 
+    costs = env.params.wd*(1- env.state[1] /env.observation_space[1].right) + env.rewards[Int(a)]*env.params.wa 
+    @assert -1.0 <= costs <= 1.0
     env.done = env.t >= env.max_steps
-    env.reward = -costs
+    env.reward = costs
     nothing
 end
 
@@ -162,11 +171,15 @@ function dist_angle(agent::FD_agent, target)
     
     """
     d =  target .- agent.position
-    sqrt(sum(abs2,d)), atan(d[2],d[1])-agent.angle
+    sqrt(sum(abs2,d)), mod2pi(atan(d[2],d[1]) - agent.angle)
     
 end
 
+dist_angle(env::SwimmingEnv) = dist_angle(env.swimmer, env.target)   
+
+
 function change_circulation!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
+    # @show a
     if a == 1
         nothing
     elseif a == 2   
@@ -182,5 +195,7 @@ function change_circulation!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
     end 
     a
 end
+
+state2xy(r,θ) = [r*cos(θ),r*sin(θ)]
 env = SwimmerEnv()
 RLBase.test_runnable!(env)
