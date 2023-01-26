@@ -66,7 +66,7 @@ function SwimmerEnv(; T = Float32,  max_steps = 500, n_actions::Int = 5, rng = R
     # high = T.([1, 1, max_speed])
     ℓ = convert(T,ℓ)
     action_space = Base.OneTo(n_actions) # A = [CRUISE, FASTER, SLOWER, LEFT, RIGHT]
-    ηs = [0, -1, 1, -1, -1] # [CRUISE, FASTER, SLOWER, LEFT, RIGHT]
+    ηs = [1, -1, 1, -1, -1] # [CRUISE, FASTER, SLOWER, LEFT, RIGHT]
     swim =  SwimmerParams(ℓ,T)
     env = SwimmingEnv(swim,
         action_space,
@@ -94,8 +94,8 @@ Random.seed!(env::SwimmingEnv, seed) = Random.seed!(env.rng, seed)
 RLBase.action_space(env::SwimmingEnv) = env.action_space
 RLBase.state_space(env::SwimmingEnv) = env.observation_space
 RLBase.reward(env::SwimmingEnv) = env.reward
-# RLBase.is_terminated(env::SwimmingEnv) = isapprox(env.state[1], 0.0, atol=env.params.ℓ/4.) || env.done #within a quarter of a fish?
-RLBase.is_terminated(env::SwimmingEnv) = env.done #within a quarter of a fish?
+RLBase.is_terminated(env::SwimmingEnv) = isapprox(env.state[1], 0.0, atol=env.params.ℓ/4.) || env.done #within a quarter of a fish?
+# RLBase.is_terminated(env::SwimmingEnv) = env.done #within a quarter of a fish?
 
 function RLBase.state(env::SwimmingEnv{A,T}) where {A,T} 
     dn,θn =  dist_angle(env.swimmer,env.target)
@@ -130,13 +130,13 @@ end
 function _step!(env::SwimmingEnv, a)
     env.t += 1
     
-    v2v = vortex_to_vortex_velocity([env.swimmer];env.params.ℓ)   
+    v2v = vortex_to_vortex_velocity([env.swimmer]; env.params.ℓ)   
     avg_v = add_lr(v2v) 
     siv = self_induced_velocity([env.swimmer];env.params.ℓ)
     angles = angle_projection([env.swimmer],v2v)
     ind_v = siv + avg_v #eqn 2.a
     for (i,b) in enumerate([env.swimmer])
-        # b.v = ind_v[:,i]
+        # log these values and look at them, are they physical? 
         b.position += ind_v[:,i] .* env.params.Δt
         b.angle = mod2pi(b.angle + angles[i] .* env.params.Δt) #eqn 2.b
     end
@@ -149,8 +149,8 @@ function _step!(env::SwimmingEnv, a)
     env.state[2] = mod2pi(θn)       
 
     
-    costs = env.params.wd*(1- env.state[1] /env.observation_space[1].right) + env.rewards[Int(a)]*env.params.wa 
-    @assert -1.0 <= costs <= 1.0
+    costs = env.params.wd*(1- dn /env.observation_space[1].right) + env.rewards[Int(a)]*env.params.wa 
+    @assert costs <= 1.0
     env.done = env.t >= env.max_steps
     env.reward = costs
     nothing

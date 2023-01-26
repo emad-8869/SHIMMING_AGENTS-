@@ -324,7 +324,7 @@ type =T= Base.Float32
 # Make a grid - strictly for visualization (so far)
 xs = LinRange{type}(0,1,31)
 ys = LinRange{type}(0,1,31)
-targets = ndgrid(xs,ys)
+# targets = ndgrid(xs,ys)
 #do it a different way
 X = repeat(reshape(xs, 1, :), length(ys), 1)
 Y = repeat(ys, 1, length(xs))
