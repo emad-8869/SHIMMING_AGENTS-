@@ -28,6 +28,33 @@ Swimmer_params(ℓ) = Swimmer_params(ℓ/2.0,10*π*ℓ^2,π*ℓ^2,5*ℓ,ℓ/2.0,
 
 Base.show(io::IO,b::FD_agent) = print(io,"FD_agent (x,y,α,Γlr,v)=($(b.position),$(b.angle),$(b.gamma),$(b.v))")
 
+#dipole left and right gamma x and Y
+#dipole <left/right> <x/y> ==>d[l/r][x/y]
+dlx(b::FD_agent;ℓ=5e-4) = b.position[1] + ℓ/2.0*cos(b.angle+π/2)
+dly(b::FD_agent;ℓ=5e-4) = b.position[2] + ℓ/2.0*sin(b.angle+π/2)
+drx(b::FD_agent;ℓ=5e-4) = b.position[1] + ℓ/2.0*cos(b.angle-π/2)
+dry(b::FD_agent;ℓ=5e-4) = b.position[2] + ℓ/2.0*sin(b.angle-π/2)
+
+
+function agent_to_target(boids::Vector{FD_agent{T}},targets; ℓ=5e-4) where T<:Real
+    n = size(boids)[1]
+    vels = zeros(T, (2,n))
+    vel = zeros(T, n)
+    for b in boids            
+        dx = targets[1,:] .-  dlx(b; ℓ)
+        dy = targets[2,:] .-  dly(b; ℓ)
+        @. vel = b.gamma[1]  / (2π *(dx^2 + dy^2 ))
+        @. vels[1,:,:] += dy * vel
+        @. vels[2,:,:] -= dx * vel
+        dx = targets[1,:] .- drx(b; ℓ)
+        dy = targets[2,:] .- dry(b; ℓ)
+        @. vel = b.gamma[2] / (2π *(dx^2 + dy^2 ))
+        @. vels[1,:,:] += dy * vel
+        @. vels[2,:,:] -= dx * vel
+    end
+    vels
+end
+
 function vortex_to_swimmer_midpoint_velocity(boids::Vector{FD_agent{T}} ;ℓ=5e-4) where T<:Real
     """
     find vortex velocity from sources to the midpoint of the swimmer
@@ -43,20 +70,7 @@ function vortex_to_swimmer_midpoint_velocity(boids::Vector{FD_agent{T}} ;ℓ=5e-
     for (i,b) in enumerate(boids)
         targets[:,i] = b.position
     end
-    # targets = [b.position[:] for b in boids]
-    for i in 1:n            
-        dx = targets[1,:] .- (boids[i].position[1] .+ ℓ/2.0*cos(boids[i].angle+π/2))
-        dy = targets[2,:] .- (boids[i].position[2] .+ ℓ/2.0*sin(boids[i].angle+π/2))
-        @. vel = boids[i].gamma[1]  / (2π *(dx^2 + dy^2 ))
-        @. vels[1,:,:] += dy * vel
-        @. vels[2,:,:] -= dx * vel
-        dx = targets[1,:] .- (boids[i].position[1] .+ ℓ/2.0*cos(boids[i].angle-π/2))
-        dy = targets[2,:] .- (boids[i].position[2] .+ ℓ/2.0*sin(boids[i].angle-π/2))
-        @. vel = boids[i].gamma[2] / (2π *(dx^2 + dy^2 ))
-        @. vels[1,:,:] += dy * vel
-        @. vels[2,:,:] -= dx * vel
-    end
-    vels
+    agent_to_target(boids,targets; ℓ=5e-4)
 end
 
 function vortex_to_vortex_velocity(boids::Vector{FD_agent{T}} ;ℓ=5e-4) where T<:Real
@@ -67,31 +81,23 @@ function vortex_to_vortex_velocity(boids::Vector{FD_agent{T}} ;ℓ=5e-4) where T
     """  
     n =size(boids)[1]
     vels    = zeros(T, (2,2*n))
-    lefts   = zeros(T, (2,n))
-    rights  = zeros(T, (2,n))
-    # targets = zeros(T,(2,2n)) #(u,v) at (Γl and Γr)
     vel     = zeros(T, 2*n) 
-    for (i,b) in enumerate(boids)
-        lefts[:,i]  .= (b.position[1] .+ ℓ/2.0*cos(b.angle+π/2)),
-                    (b.position[2] .+ ℓ/2.0*sin(b.angle+π/2))
-        rights[:,i] .= (b.position[1] .+ ℓ/2.0*cos(b.angle-π/2)),
-                    (b.position[2] .+ ℓ/2.0*sin(b.angle-π/2))        
-    end
-    #stack up the left and right vortices as the targets
-    targets = [lefts rights]
+
+    targets = [[dlx.(boids;ℓ) dly.(boids;ℓ)]' [drx.(boids;ℓ) dry.(boids;ℓ)]']
+
     for i in 1:n            
-        dx = targets[1,:] .- lefts[1,i] 
-        dy = targets[2,:] .- lefts[2,i] 
+        dx = targets[1,:] .- targets[1,i] #lefts[1,i] 
+        dy = targets[2,:] .- targets[2,i] #lefts[2,i] 
         @. vel = boids[i].gamma[1]  / (2π *(dx^2 + dy^2 ))   
         vel[i] = 0.0 #singularity following the left vortex
-        vel[i+n] = 0.0 #NATE TODO
+        # vel[i+n] = 0.0 #NATE TODO
         @. vels[1,:] += dy * vel
         @. vels[2,:] -= dx * vel
-        dx = targets[1,:] .- rights[1,i] 
-        dy = targets[2,:] .- rights[2,i] 
+        dx = targets[1,:] .- targets[1, n+i] #rights[1,i] 
+        dy = targets[2,:] .- targets[2, n+i] #rights[2,i] 
         @. vel = boids[i].gamma[2] / (2π *(dx^2 + dy^2 ))
         vel[i+n] = 0.0 # singularity follows the right vortex position
-        vel[i] = 0.0   # #NATE TODO self interactions are found in another function
+        # vel[i] = 0.0   # #NATE TODO self interactions are found in another function
         @. vels[1,:] += dy * vel
         @. vels[2,:] -= dx * vel
     end
@@ -135,7 +141,7 @@ function vortex_to_grid_velocity(boids ::Vector{FD_agent{T}}, targets  ;ℓ=5e-4
     vel = zeros(T, size(targets[1]))
     for i in 1:n            
         #left vortex
-        dx = targets[1] .- (boids[i].position[1] .+ ℓ/2.0*cos(boids[i].angle+π/2))
+        dx = targets[1] .- (boids[i].position[1] .+ dlx(boids[i];ℓ))
         dy = targets[2] .- (boids[i].position[2] .+ ℓ/2.0*sin(boids[i].angle+π/2))
         @. vel = boids[i].gamma[1]  / (2π *(dx^2 + dy^2 ))
         @. vels[1,:,:] += dy * vel
