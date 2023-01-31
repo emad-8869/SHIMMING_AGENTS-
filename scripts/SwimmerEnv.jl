@@ -99,7 +99,6 @@ RLBase.is_terminated(env::SwimmingEnv) = isapprox(env.state[1], 0.0, atol=env.pa
 
 function RLBase.state(env::SwimmingEnv{A,T}) where {A,T} 
     dn,θn =  dist_angle(env.swimmer,env.target)
-    #10 is a magic number?????
     [clamp(dn, 0, env.observation_space[1].right)|>T, mod2pi(θn)|>T ]     
 end
 
@@ -131,15 +130,19 @@ function _step!(env::SwimmingEnv, a)
     env.t += 1
     
     v2v = vortex_to_vortex_velocity([env.swimmer]; env.params.ℓ)   
-    avg_v = add_lr(v2v) 
+    avg_v = sum(v2v,dims=2) #add_lr(v2v) 
+    
     siv = self_induced_velocity([env.swimmer];env.params.ℓ)
-    angles = angle_projection([env.swimmer],v2v)
     ind_v = siv + avg_v #eqn 2.a
+
+    angles = angle_projection([env.swimmer],v2v)
+    @show norm(ind_v) #siv,avg_v
     for (i,b) in enumerate([env.swimmer])
         # log these values and look at them, are they physical? 
         b.position += ind_v[:,i] .* env.params.Δt
-        b.angle = mod2pi(b.angle + angles[i] .* env.params.Δt) #eqn 2.b
+        b.angle = mod2pi(b.angle + angles[i] )#.* env.params.Δt) #eqn 2.b
     end
+    
     dn,θn = dist_angle(env.swimmer, env.target)
     # NATE : TODO ADD TARGET MOTION HERE - below is a crappy circle 
     # path(omega,t) = omega*env.params.ℓ*5.0 .*[-sin(omega*t),cos(omega*t)]    
@@ -148,7 +151,7 @@ function _step!(env::SwimmingEnv, a)
     env.state[1] = clamp(dn, 0, env.observation_space[1].right ) #make sure it is in the domain
     env.state[2] = mod2pi(θn)       
 
-    
+    #NATE: changed up costs to allow wildly negative costs if outside of observation_space
     costs = env.params.wd*(1- dn /env.observation_space[1].right) + env.rewards[Int(a)]*env.params.wa 
     @assert costs <= 1.0
     env.done = env.t >= env.max_steps
@@ -171,28 +174,58 @@ function dist_angle(agent::FD_agent, target)
     
     """
     d =  target .- agent.position
-    sqrt(sum(abs2,d)), mod2pi(atan(d[2],d[1]) - agent.angle)
+    sqrt(sum(abs2,d)), mod2pi(mod2pi(atan(d[2],d[1])) - agent.angle)
     
 end
 
 dist_angle(env::SwimmingEnv) = dist_angle(env.swimmer, env.target)   
 
 
+# function change_circulation!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
+#     """ Agent starts with circulation of from
+#         [swim.Γ0,-swim.Γ0]
+#         so we have to inc/dec to change the magnitude not absolutes
+#         [CRUISE, FASTER, SLOWER, LEFT, RIGHT]"""
+#     # TODO: Add sign(enb.swimmer.gamma)?
+    
+#     if a == 1
+#         env.swimmer.gamma = [env.params.Γ0, -env.params.Γ0]
+#     elseif a == 2   
+#         env.swimmer.gamma = [env.params.Γ0 + env.params.Γa, -env.params.Γ0 - env.params.Γa]
+#     elseif a == 3  
+#         env.swimmer.gamma = [env.params.Γ0 - env.params.Γa, -env.params.Γ0+ env.params.Γa]
+#     elseif a == 4  
+#         env.swimmer.gamma = [env.params.Γ0 + env.params.Γt, -env.params.Γ0 + env.params.Γt]
+#     elseif a == 5   
+#         env.swimmer.gamma = [ env.params.Γ0-env.params.Γt,  -env.params.Γ0-env.params.Γt]
+#     else 
+#         @error "unknown action of $action"
+#     end 
+    
+#     a
+# end
+
 function change_circulation!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
-    # @show a
+    """ Agent starts with circulation of from
+        [-swim.Γ0, swim.Γ0]
+        so we have to inc/dec to change the magnitude not absolutes
+        [CRUISE, FASTER, SLOWER, LEFT, RIGHT]"""
+    # TODO: Add sign(enb.swimmer.gamma)?
+    
     if a == 1
-        nothing
+        env.swimmer.gamma = [-env.params.Γ0, env.params.Γ0]
     elseif a == 2   
-        env.swimmer.gamma += [env.params.Γa , env.params.Γa]
+        env.swimmer.gamma = [-env.params.Γ0 - env.params.Γa, env.params.Γ0 + env.params.Γa]
     elseif a == 3  
-        env.swimmer.gamma += [-env.params.Γa, -env.params.Γa]
+        env.swimmer.gamma = [-env.params.Γ0 + env.params.Γa, env.params.Γ0 - env.params.Γa]
     elseif a == 4  
-        env.swimmer.gamma += [env.params.Γt, -env.params.Γt]
+        env.swimmer.gamma = [-env.params.Γ0 - env.params.Γt, env.params.Γ0 - env.params.Γt]
     elseif a == 5   
-        env.swimmer.gamma += [-env.params.Γt, env.params.Γt]
+        env.swimmer.gamma = [-env.params.Γ0+env.params.Γt,  env.params.Γ0  + env.params.Γt]
     else 
         @error "unknown action of $action"
     end 
+    
     a
 end
 
