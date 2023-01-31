@@ -8,19 +8,25 @@ using Plots
 
 Base.@kwdef mutable struct DistRewardPerEpisode <: AbstractHook    
     dists::Vector = []
+    position::Vector = []
     positions:: Vector = []
     rewards::Vector = []
     gammas::Vector = []
-    reward = 0.0
+    reward::Vector = []
     is_display_on_exit::Bool = true
 end
 
 function (h::DistRewardPerEpisode)(::PostEpisodeStage, policy, env) 
-    push!(h.dists, dist_angle(env))#sqrt(sum(abs2, env.target .- state2xy(env.state...))))
-    push!(h.positions, env.swimmer.position)
-    push!(h.gammas, env.swimmer.gamma)
-    h.reward += reward(env)
-    push!(h.rewards,h.reward)
+    push!(h.dists, dist_angle(env))
+    push!(h.positions, h.position)
+    # push!(h.gammas, env.swimmer.gamma)    
+    push!(h.rewards,sum(h.reward))
+    h.reward = []
+    h.position = []
+end
+function (h::DistRewardPerEpisode)(::PostActStage, policy, env)
+    push!(h.reward ,reward(env))
+    push!(h.position, env.swimmer.position)
 end
 
 include(".\\SwimmerEnv.jl")
@@ -34,7 +40,7 @@ function RL.Experiment(
 )
     rng = StableRNG(187)
     # env2 = PendulumEnv(continuous = false, max_steps = 5000, rng = rng)
-    env = SwimmerEnv(max_steps = 1000, target=[1,1])
+    env = SwimmerEnv(max_steps = 100, target=[0,0])
     ns, na = length(state(env)), length(action_space(env))
     agent = Agent(
         policy = 
@@ -95,50 +101,89 @@ function RL.Experiment(
 
     stop_condition = StopAfterStep(50_000, is_show_progress=!haskey(ENV, "CI"))
     hook = DistRewardPerEpisode() #TotalRewardPerEpisode()
-
+    # hook = StepsPerEpisode()
     Experiment(agent, env, stop_condition, hook, "LTS")
 end
 
 ex = E`JuliaRL_BasicDQN_LTSDiscrete`
 
 run(ex)
+plot(ex.hook.rewards)
 plot(ex.hook.rewards,marker=:dot)
 plot(ex.hook.gammas ,label="")
-rs = [r for (r,t) in ex.hook.dists]
+rs = [r for (r,t) in ex.hook.dists]#./(ex.env.observation_space[1].right)
 ts = [t for (r,t) in ex.hook.dists]
 plot(rs)
 plot!(ts)
-begin
-    lim = ex.env.observation_space[1].right
-    plot([x for (x,y) in ex.hook.positions],[y for (x,y) in ex.hook.positions],
-        m=:dot,ls=:dash)
-    plot!([ex.env.target[1]],[ex.env.target[2]],
-        st=:scatter,c=:red,label="target")
-        # xlims=[-lim*2.,lim*2.], ylims=[-lim*2.,lim*2.])
+
+
+begin 
+#assume the policy is good, run it through the motions
+env = SwimmerEnv(max_steps = 500, target=[1,1])
+h = DistRewardPerEpisode()
+run(ex.policy,env,StopAfterEpisode(50),h)
 
 end
-
 begin
     S = state_space(ex.env)
-    R = range(S[1].left, stop=S[1].right, length= 25)
-    Θ = range(S[2].left, stop=S[2].right, length= 32)
+    R = range(S[1].left, stop=S[1].right, length= 51)
+    Θ = range(S[2].left, stop=S[2].right, length= 73)
     function show_approx(n)
         run(ex.policy,ex.env, StopAfterEpisode(n))
-        [ex.policy.policy.learner.approximator([p, v]) |> maximum for p in R, v in Θ]
+        [ex.policy.policy.learner.target_approximator([p, v]) |> maximum for p in R, v in Θ]
     end
 
-    n = 50
-    field = -show_approx(n)
+    n = 100
+    run(ex.policy,ex.env, StopAfterEpisode(n))
+    field = -[ex.policy.policy.learner.approximator([p, v]) |> maximum for p in R, v in Θ]
+    ofield = -[ex.policy.policy.learner.target_approximator([p, v]) |> maximum for p in R, v in Θ]
+    
     # plot(R,Θ, field , linetype=:wireframe,
         # xlabel="R", ylabel="θ", zlabel="cost", title="Episode $n")
     plot(R,Θ, field' , linetype=:contourf,
     ylabel="θ", xlabel="R",  title="Episode $n",c=:thermal)
 end
-plot(R,Θ, field' ,proj=:polar,
-ylabel="θ", xlabel="R",  title="Episode $n",c=:thermal)
+
+hm = heatmap(field, aspect_ratio=:equal, proj=:polar,yaxis=false,c=:coolwarm)
+
+
+begin 
+plot([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:green,label="target")
+anim = @animate for pos in ex.hook.positions[9]
+        plot!([pos[1]],[pos[2]],st=:scatter,aspect_ration=:equal,label="")
+end
+gif(anim)
+
+end
+begin
+    i = 1
+xs = []
+ys = []
+for pos in ex.hook.positions[i]
+    push!(xs,pos[1])
+    push!(ys,pos[2])
+end
+plot([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:green,label="target")
+plot!([xs[1]],[ys[1]],marker=:circle,st=:scatter,color=:green,label="start")
+plot!(xs,ys,label=ex.hook.rewards[i])
+plot!([xs[end]],[ys[end]],marker=:circle,st=:scatter,color=:red, label="end")
+end
 """
 Bullshit for testing 
 """
 act = env |> policy
 @show env.swimmer
 (env)(act)
+
+begin
+boids = [ex.env.swimmer]
+xs = LinRange{type}(-0.025,0.01,31)
+ys = LinRange{type}(-0.025,0.01,31)
+#do it a different way
+X = repeat(reshape(xs, 1, :), length(ys), 1)
+Y = repeat(ys, 1, length(xs))
+targets = [X,Y]
+stream = streamfunction(boids, targets;ℓ=ex.env.params.ℓ)
+plot(collect(xs),collect(ys), stream, st=:contourf)
+
+end
