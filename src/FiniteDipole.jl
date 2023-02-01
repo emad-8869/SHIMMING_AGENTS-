@@ -26,7 +26,9 @@ end
 #Default constructor uses
 Swimmer_params(ℓ) = Swimmer_params(ℓ/2.0,10*π*ℓ^2,π*ℓ^2,5*ℓ,ℓ/2.0,10ℓ)
 
-Base.show(io::IO,b::FD_agent) = print(io,"FD_agent (x,y,α,Γlr,v)=($(b.position),$(b.angle),$(b.gamma),$(b.v))")
+Base.show(io::IO,b::FD_agent) = print(io,"FD_agent (x,y)=$(b.position),
+(α) = $(b.angle),
+(Γl, Γr) = $(b.gamma)")
 
 #dipole left and right gamma x and Y
 #dipole <left/right> <x/y> ==>d[l/r][x/y]
