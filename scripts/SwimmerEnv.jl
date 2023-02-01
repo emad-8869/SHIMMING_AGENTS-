@@ -136,11 +136,11 @@ function _step!(env::SwimmingEnv, a)
     ind_v = siv + avg_v #eqn 2.a
 
     angles = angle_projection([env.swimmer],v2v)
-    @show norm(ind_v) #siv,avg_v
+    # @show norm(ind_v) #siv,avg_v
     for (i,b) in enumerate([env.swimmer])
         # log these values and look at them, are they physical? 
         b.position += ind_v[:,i] .* env.params.Δt
-        b.angle = mod2pi(b.angle + angles[i] )#.* env.params.Δt) #eqn 2.b
+        b.angle = mod2pi(b.angle + angles[i] .* env.params.Δt) #eqn 2.b
     end
     
     dn,θn = dist_angle(env.swimmer, env.target)
@@ -213,7 +213,8 @@ function change_circulation!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
     # TODO: Add sign(enb.swimmer.gamma)?
     
     if a == 1
-        env.swimmer.gamma = [-env.params.Γ0, env.params.Γ0]
+        nothing
+        # env.swimmer.gamma = [-env.params.Γ0, env.params.Γ0]
     elseif a == 2   
         env.swimmer.gamma = [-env.params.Γ0 - env.params.Γa, env.params.Γ0 + env.params.Γa]
     elseif a == 3  
@@ -221,7 +222,7 @@ function change_circulation!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
     elseif a == 4  
         env.swimmer.gamma = [-env.params.Γ0 - env.params.Γt, env.params.Γ0 - env.params.Γt]
     elseif a == 5   
-        env.swimmer.gamma = [-env.params.Γ0+env.params.Γt,  env.params.Γ0  + env.params.Γt]
+        env.swimmer.gamma = [-env.params.Γ0 + env.params.Γt, env.params.Γ0  + env.params.Γt]
     else 
         @error "unknown action of $action"
     end 

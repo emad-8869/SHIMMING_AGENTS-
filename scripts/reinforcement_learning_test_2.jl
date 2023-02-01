@@ -12,7 +12,7 @@ Base.@kwdef mutable struct DistRewardPerEpisode <: AbstractHook
     positions:: Vector = []
     rewards::Vector = []
     gammas::Vector = []
-    reward::Vector = []
+    reward = 0
     is_display_on_exit::Bool = true
 end
 
@@ -20,12 +20,12 @@ function (h::DistRewardPerEpisode)(::PostEpisodeStage, policy, env)
     push!(h.dists, dist_angle(env))
     push!(h.positions, h.position)
     # push!(h.gammas, env.swimmer.gamma)    
-    push!(h.rewards,sum(h.reward))
-    h.reward = []
+    push!(h.rewards, h.reward)
+    h.reward = 0.0
     h.position = []
 end
 function (h::DistRewardPerEpisode)(::PostActStage, policy, env)
-    push!(h.reward ,reward(env))
+    h.reward += reward(env)
     push!(h.position, env.swimmer.position)
 end
 
@@ -110,7 +110,7 @@ ex = E`JuliaRL_BasicDQN_LTSDiscrete`
 run(ex)
 plot(ex.hook.rewards)
 plot(ex.hook.rewards,marker=:dot)
-plot(ex.hook.gammas ,label="")
+re4plot(ex.hook.gammas ,label="")
 rs = [r for (r,t) in ex.hook.dists]#./(ex.env.observation_space[1].right)
 ts = [t for (r,t) in ex.hook.dists]
 plot(rs)
@@ -118,13 +118,14 @@ plot!(ts)
 
 
 begin 
-#assume the policy is good, run it through the motions
-env = SwimmerEnv(max_steps = 500, target=[1,1])
-h = DistRewardPerEpisode()
-run(ex.policy,env,StopAfterEpisode(50),h)
-
+    #assume the policy is good, run it through the motions
+    env = SwimmerEnv(max_steps = 500, target=[1,1])
+    h = DistRewardPerEpisode()
+    run(ex.policy,env,StopAfterEpisode(50),h)
 end
+
 begin
+    #OUTPUT with a max of eps
     S = state_space(ex.env)
     R = range(S[1].left, stop=S[1].right, length= 51)
     Θ = range(S[2].left, stop=S[2].right, length= 73)
@@ -142,31 +143,39 @@ begin
         # xlabel="R", ylabel="θ", zlabel="cost", title="Episode $n")
     plot(R,Θ, field' , linetype=:contourf,
     ylabel="θ", xlabel="R",  title="Episode $n",c=:thermal)
-end
 
-hm = heatmap(field, aspect_ratio=:equal, proj=:polar,yaxis=false,c=:coolwarm)
-
-
-begin 
-plot([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:green,label="target")
-anim = @animate for pos in ex.hook.positions[9]
-        plot!([pos[1]],[pos[2]],st=:scatter,aspect_ration=:equal,label="")
-end
-gif(anim)
+    hm = heatmap(field, aspect_ratio=:equal, proj=:polar,yaxis=false,c=:coolwarm)
 
 end
+
+
+
 begin
-    i = 1
-xs = []
-ys = []
-for pos in ex.hook.positions[i]
-    push!(xs,pos[1])
-    push!(ys,pos[2])
+    #animate the path of an Episode
+    epNum = 69
+    plot([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:green,label="target")
+    anim = @animate for pos in ex.hook.positions[epNum]
+            plot!([pos[1]],[pos[2]],st=:scatter,
+                 aspect_ration=:equal,label="",markershape=:octagon,
+                 color=:blue)
+    end
+    gif(anim)
 end
-plot([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:green,label="target")
-plot!([xs[1]],[ys[1]],marker=:circle,st=:scatter,color=:green,label="start")
-plot!(xs,ys,label=ex.hook.rewards[i])
-plot!([xs[end]],[ys[end]],marker=:circle,st=:scatter,color=:red, label="end")
+
+
+
+begin
+    i = argmax(ex.hook.rewards)
+    xs = []
+    ys = []
+    for pos in ex.hook.positions[i]
+        push!(xs,pos[1])
+        push!(ys,pos[2])
+    end
+    plot([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:green,label="target")
+    plot!([xs[1]],[ys[1]],marker=:circle,st=:scatter,color=:green,label="start")
+    plot!(xs,ys,label=ex.hook.rewards[i])
+    plot!([xs[end]],[ys[end]],marker=:circle,st=:scatter,color=:red, label="end")
 end
 """
 Bullshit for testing 
@@ -175,6 +184,56 @@ act = env |> policy
 @show env.swimmer
 (env)(act)
 
+begin
+    T = Float32
+    env = ex.env
+    #start a swimmer at the origin
+    #cycle through fives actions, do they work? 
+    changes = zeros(2,5)
+    for act = 1:5
+        env.swimmer = FD_agent(Vector{T}([0.0,0.0]),Vector{T}([-env.params.Γ0,env.params.Γ0]), T(π/2), Vector{T}([0.0,0.0]),Vector{T}([0.0,0.0]))
+        (env)(act)
+        changes[:,act] = env.swimmer.position
+        @show env.swimmer.gamma
+    end 
+    @show changes 
+end
+
+begin
+    T = Float32
+    env = ex.env
+    #start a swimmer at the origin
+    # find the turning radius
+    n_steps = 5
+    changes = zeros(2,n_steps+1)
+    env.swimmer = FD_agent(Vector{T}([0.0,0.0]),Vector{T}([-env.params.Γ0,env.params.Γ0]), T(π/2), Vector{T}([0.0,0.0]),Vector{T}([0.0,0.0]))
+    plot([0],[0],marker=:star,label="Start",st=:scatter,ms=10)
+    for i = 1:n_steps
+        (env)(4) #left
+        changes[:,i+1] = env.swimmer.position
+    end 
+
+    plot!(changes[1,:],changes[2,:],marker=:hex)
+    plot!([0, -env.params.ℓ*10],[0.001, 0.001],marker=:arrow,color=:red)
+    plot!([0, -env.params.ℓ*20],[0.001, 0.001],marker=:arrow,color=:red)
+end
+
+begin
+    T = Float32
+    env = ex.env
+    #start a swimmer at the origin
+    # find the turning radius
+    n_steps = 100
+    changes = zeros(2,n_steps+1)
+    env.swimmer = FD_agent(Vector{T}([0.0,0.0]),Vector{T}([-env.params.Γ0,env.params.Γ0]), T(π/2), Vector{T}([0.0,0.0]),Vector{T}([0.0,0.0]))
+    for i = 1:n_steps
+        (env)(5) #right
+        changes[:,i+1] = env.swimmer.position
+    end 
+    plot(changes[1,:],changes[2,:],marker=:hex)
+    plot!([0, env.params.ℓ*10],[4*ell, 4*ell],marker=:arrow,color=:red,label="ρT")
+    plot!([0, env.params.ℓ*20],[4*ell, 4*ell],marker=:arrow,color=:green,label="ρT")
+end
 begin
 boids = [ex.env.swimmer]
 xs = LinRange{type}(-0.025,0.01,31)
