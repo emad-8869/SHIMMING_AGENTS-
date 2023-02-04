@@ -213,8 +213,8 @@ function change_circulation!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
     # TODO: Add sign(enb.swimmer.gamma)?
     
     if a == 1
-        nothing
-        # env.swimmer.gamma = [-env.params.Γ0, env.params.Γ0]
+        # nothing
+        env.swimmer.gamma = [-env.params.Γ0, env.params.Γ0]
     elseif a == 2   
         env.swimmer.gamma = [-env.params.Γ0 - env.params.Γa, env.params.Γ0 + env.params.Γa]
     elseif a == 3  
@@ -231,5 +231,29 @@ function change_circulation!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
 end
 
 state2xy(r,θ) = [r*cos(θ),r*sin(θ)]
+Base.@kwdef mutable struct DistRewardPerEpisode <: AbstractHook    
+    dists::Vector = []
+    position::Vector = []
+    positions:: Vector = []
+    rewards::Vector = []
+    gammas::Vector = []
+    reward = 0
+    is_display_on_exit::Bool = true
+end
+
+function (h::DistRewardPerEpisode)(::PostEpisodeStage, policy, env) 
+    push!(h.dists, dist_angle(env))
+    push!(h.positions, h.position)
+    # push!(h.gammas, env.swimmer.gamma)    
+    push!(h.rewards, h.reward)
+    h.reward = 0.0
+    h.position = []
+end
+function (h::DistRewardPerEpisode)(::PostActStage, policy, env)
+    h.reward += reward(env)
+    push!(h.position, env.swimmer.position)
+end
+
+
 env = SwimmerEnv()
 RLBase.test_runnable!(env)
