@@ -94,8 +94,17 @@ Random.seed!(env::SwimmingEnv, seed) = Random.seed!(env.rng, seed)
 RLBase.action_space(env::SwimmingEnv) = env.action_space
 RLBase.state_space(env::SwimmingEnv) = env.observation_space
 RLBase.reward(env::SwimmingEnv) = env.reward
-RLBase.is_terminated(env::SwimmingEnv) = isapprox(env.state[1], 0.0, atol=env.params.ℓ/4.) || env.done #within a quarter of a fish?
-# RLBase.is_terminated(env::SwimmingEnv) = env.done #within a quarter of a fish?
+RLBase.is_terminated(env::SwimmingEnv) = isapprox(env.state[1], 0.0, atol=env.params.ℓ) || env.done #within a quarter of a fish?
+function RLBase.is_terminated(env::SwimmingEnv) 
+    if isapprox(env.state[1], 0.0, atol=env.params.D)
+        env.reward += 100.
+        true
+    elseif env.done 
+        true
+    else
+        false
+    end
+end
 
 function RLBase.state(env::SwimmingEnv{A,T}) where {A,T} 
     dn,θn =  dist_angle(env.swimmer,env.target)
@@ -223,6 +232,32 @@ function change_circulation!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
         env.swimmer.gamma = [-env.params.Γ0 - env.params.Γt, env.params.Γ0 - env.params.Γt]
     elseif a == 5   
         env.swimmer.gamma = [-env.params.Γ0 + env.params.Γt, env.params.Γ0  + env.params.Γt]
+    else 
+        @error "unknown action of $action"
+    end 
+    
+    a
+end
+
+function change_circulation_incremental!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
+    """ Agent starts with circulation of from
+        broken
+        [-swim.Γ0, swim.Γ0]
+        so we have to inc/dec to change the magnitude not absolutes
+        [CRUISE, FASTER, SLOWER, LEFT, RIGHT]"""
+    # TODO: Add sign(enb.swimmer.gamma)?
+    
+    if a == 1
+        # nothing
+        env.swimmer.gamma = [-env.params.Γ0, env.params.Γ0]
+    elseif a == 2   
+        env.swimmer.gamma += [ - env.params.Γa,  + env.params.Γa]
+    elseif a == 3  
+        env.swimmer.gamma += [ + env.params.Γa,  - env.params.Γa]
+    elseif a == 4  
+        env.swimmer.gamma += [ - env.params.Γt, - env.params.Γt]
+    elseif a == 5   
+        env.swimmer.gamma += [ + env.params.Γt,  + env.params.Γt]
     else 
         @error "unknown action of $action"
     end 

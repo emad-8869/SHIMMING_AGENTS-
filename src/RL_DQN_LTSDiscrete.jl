@@ -18,7 +18,7 @@ function RL.Experiment(
 )
     rng = StableRNG(187)
     # env2 = PendulumEnv(continuous = false, max_steps = 5000, rng = rng)
-    env = SwimmerEnv(max_steps = 100, target=[0,0])
+    env = SwimmerEnv(max_steps = 200, target=[10,10])
     ns, na = length(state(env)), length(action_space(env))
     agent = Agent(
         policy = 
@@ -63,7 +63,8 @@ function RL.Experiment(
         ),
     )
 
-    stop_condition = StopAfterStep(50_000, is_show_progress=!haskey(ENV, "CI"))
+    # stop_condition = StopAfterStep(500_000, is_show_progress=!haskey(ENV, "CI"))
+    stop_condition = StopAfterEpisode(100)
     hook = DistRewardPerEpisode() 
 
     Experiment(agent, env, stop_condition, hook, "LTS")
@@ -72,7 +73,26 @@ end
 ex = E`JuliaRL_BasicDQN_LTSDiscrete`
 
 run(ex)
-plot(ex.hook.rewards)
+
+begin
+    """
+    look at turning radius - left
+    """
+        T = Float32
+        act = env |> ex.policy
+        plot([0],[0],st=:scatter,marker=:star,label="start")
+        env.swimmer = FD_agent(Vector{T}([0.0,0.0]),Vector{T}([-env.params.Γ0, env.params.Γ0]), T(π/2), Vector{T}([0.0,0.0]),Vector{T}([0.0,0.0]))        
+        for t = 1:1000
+            
+            (env)(4)
+            # @show env.swimmer
+            plot!([env.swimmer.position[1]],[env.swimmer.position[2]],st=:scatter,label="")
+        end
+        plot!([0,-20*ex.env.params.ℓ],[0.001,0.001], color=:red)
+        plot!(aspect_ratio=:equal)
+end
+    
+plot(ex.hook.rewards,marker=:circle,ms=1,st=:scatter)
 
 begin
     #animate the path of an Episode
@@ -90,14 +110,19 @@ end
 
 begin
     i = argmax(ex.hook.rewards)
-    xs = []
-    ys = []
-    for pos in ex.hook.positions[i]
-        push!(xs,pos[1])
-        push!(ys,pos[2])
+    is = findall(x-> x>100, ex.hook.rewards)
+    plot()
+    for i in is
+        xs = []
+        ys = []
+        for pos in ex.hook.positions[i]
+            push!(xs,pos[1])
+            push!(ys,pos[2])
+        end
+        
+        plot!([xs[1]],[ys[1]],marker=:circle,st=:scatter,color=:green,label="")
+        plot!(xs,ys,lw=0.5,label="")#ex.hook.rewards[i])
+        plot!([xs[end]],[ys[end]],marker=:circle,ms=1,st=:scatter,color=:red, label="")
     end
-    plot([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:green,label="target")
-    plot!([xs[1]],[ys[1]],marker=:circle,st=:scatter,color=:green,label="start")
-    plot!(xs,ys,label=ex.hook.rewards[i])
-    plot!([xs[end]],[ys[end]],marker=:circle,st=:scatter,color=:red, label="end")
+    plot!([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:green,label="")
 end
