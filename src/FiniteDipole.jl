@@ -1,10 +1,6 @@
 #NATE: GAVE UP on modules
 # module FiniteDipole
 
-# export FD_agent, Swimmer_params
-# export vortex_to_grid_velocity, vortex_to_swimmer_midpoint_velocity, vortex_to_vortex_velocity
-# export angle_projection, self_induced_velocity, potential, streamfunction
-# export add_lr, move_swimmers!, change_bearing_speed
 using LinearAlgebra
 Base.@kwdef mutable struct FD_agent{T<:Real}
     position::Vector{T} #2-D to start
@@ -26,7 +22,10 @@ end
 #Default constructor uses
 Swimmer_params(ℓ) = Swimmer_params(ℓ/2.0,10*π*ℓ^2,π*ℓ^2,5*ℓ,ℓ/2.0,10ℓ)
 
-Base.show(io::IO,b::FD_agent) = print(io,"FD_agent (x,y,α,Γlr,v)=($(b.position),$(b.angle),$(b.gamma),$(b.v))")
+Base.show(io::IO,b::FD_agent) = print(io,"FD_agent (x,y)=$(b.position),
+\t (θ) = $(b.angle),
+\t (Γl,Γr) = $(b.gamma),
+\t (u,v) = $(b.v))")
 
 #dipole left and right gamma x and Y
 #dipole <left/right> <x/y> ==>d[l/r][x/y]
@@ -63,14 +62,10 @@ function vortex_to_swimmer_midpoint_velocity(boids::Vector{FD_agent{T}} ;ℓ=5e-
     returns velocity induced field
     """  
 
-    n =size(boids)[1]
-    vels = zeros(T, (2,n))
-    vel = zeros(T, n)
-    targets = zeros(T,(2,n))
     for (i,b) in enumerate(boids)
         targets[:,i] = b.position
     end
-    agent_to_target(boids,targets; ℓ=5e-4)
+    agent_to_target(boids,targets; ℓ)
 end
 
 function vortex_to_vortex_velocity(boids::Vector{FD_agent{T}} ;ℓ=5e-4) where T<:Real
@@ -84,6 +79,16 @@ function vortex_to_vortex_velocity(boids::Vector{FD_agent{T}} ;ℓ=5e-4) where T
     vel     = zeros(T, 2*n) 
 
     targets = [[dlx.(boids;ℓ) dly.(boids;ℓ)]' [drx.(boids;ℓ) dry.(boids;ℓ)]']
+
+    # dx = [(targets[1,i] - targets[1,j]) for i in 1:n, j in 1:n]
+    # dy = [(targets[2,i] - targets[2,j]) for i in 1:n, j in 1:n]
+    # d2 = (dx.^2 + dy.^2)
+    # d2inv = 1.0./d2
+    # foreach(i -> @inbounds(d2inv[i, i] = 0.0), 1:n)
+    # for (i,b) in enumerate(boids)
+    #     vels[1,:] += sum(b.gamma[1]/(2π) *dy.*d2inv, dims = 2)
+    #     vels[2,:] += sum(b.gamma[1]/(2π) *dx.*d2inv, dims = 2)
+    # end
 
     for i in 1:n            
         dx = targets[1,:] .- targets[1,i] #lefts[1,i] 
@@ -115,7 +120,7 @@ function angle_projection(boids::Vector{FD_agent{T}},lrvel::Matrix{T}; ℓ=5e-4)
     #project the velocity difference onto the induced velocity of the swimmer     
     alphadot = zeros(T,n)
     for (i,b) in enumerate(boids)
-        alphadot[i]  = sum(b.gamma)/(2π*ℓ^2) +  (right[:,i] - left[:,i])⋅[cos(b.angle), sin(b.angle)]        
+        alphadot[i]  =  (right[:,i] - left[:,i])⋅[cos(b.angle), sin(b.angle)] + sum(b.gamma)/(2π*ℓ)  
     end
     alphadot 
 end
@@ -141,14 +146,14 @@ function vortex_to_grid_velocity(boids ::Vector{FD_agent{T}}, targets  ;ℓ=5e-4
     vel = zeros(T, size(targets[1]))
     for i in 1:n            
         #left vortex
-        dx = targets[1] .- (boids[i].position[1] .+ dlx(boids[i];ℓ))
-        dy = targets[2] .- (boids[i].position[2] .+ ℓ/2.0*sin(boids[i].angle+π/2))
+        dx = targets[1] .- dlx(b;ℓ)
+        dy = targets[2] .- dly(b;ℓ)
         @. vel = boids[i].gamma[1]  / (2π *(dx^2 + dy^2 ))
         @. vels[1,:,:] += dy * vel
         @. vels[2,:,:] -= dx * vel
         #right vortex
-        dx = targets[1] .- (boids[i].position[1] .+ ℓ/2.0*cos(boids[i].angle-π/2))
-        dy = targets[2] .- (boids[i].position[2] .+ ℓ/2.0*sin(boids[i].angle-π/2))
+        dx = targets[1] .- drx(b;ℓ)
+        dy = targets[2] .- dry(b;ℓ)
         @. vel = boids[i].gamma[2] / (2π *(dx^2 + dy^2 ))
         @. vels[1,:,:] += dy * vel
         @. vels[2,:,:] -= dx * vel
@@ -165,12 +170,12 @@ function potential(boids::Vector{FD_agent{T}},targets; ℓ=5e-4) where T<: Real
 
     for b in boids            
         #left vortex
-        dx = targets[1] .- (b.position[1] .+ ℓ/2.0*cos(b.angle+π/2))
-        dy = targets[2] .- (b.position[2] .+ ℓ/2.0*sin(b.angle+π/2))
+        dx = targets[1] .- dlx(b;ℓ)
+        dy = targets[2] .- dly(b;ℓ)
         @. pot += -b.gamma[1] *atan(dx,dy)
         #right vortex
-        dx = targets[1] .- (b.position[1] .+ ℓ/2.0*cos(b.angle-π/2))
-        dy = targets[2] .- (b.position[2] .+ ℓ/2.0*sin(b.angle-π/2))
+        dx = targets[1] .- drx(b;ℓ)
+        dy = targets[2] .- dry(b;ℓ)
         @. pot += -b.gamma[2] *atan(dx,dy)
     end
     pot./(2π)
@@ -185,12 +190,12 @@ function streamfunction(boids::Vector{FD_agent{T}},targets; ℓ=5e-4) where T<: 
 
     for b in boids            
         #left vortex
-        dx = targets[1] .- (b.position[1] .+ ℓ/2.0*cos(b.angle+π/2))
-        dy = targets[2] .- (b.position[2] .+ ℓ/2.0*sin(b.angle+π/2))
+        dx = targets[1] .- dlx(b;ℓ)
+        dy = targets[2] .- dly(b;ℓ)
         @. pot += -b.gamma[1] *log(sqrt(dx^2+dy^2))
         #right vortex
-        dx = targets[1] .- (b.position[1] .+ ℓ/2.0*cos(b.angle-π/2))
-        dy = targets[2] .- (b.position[2] .+ ℓ/2.0*sin(b.angle-π/2))
+        dx = targets[1] .- drx(b;ℓ)
+        dy = targets[2] .- dry(b;ℓ)
         @. pot += -b.gamma[2] *log(sqrt(dx^2+dy^2))
 
     end

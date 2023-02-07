@@ -12,20 +12,21 @@ Base.@kwdef mutable struct DistRewardPerEpisode <: AbstractHook
     positions:: Vector = []
     rewards::Vector = []
     gammas::Vector = []
-    reward::Vector = []
+    reward = 0.0
     is_display_on_exit::Bool = true
 end
 
 function (h::DistRewardPerEpisode)(::PostEpisodeStage, policy, env) 
     push!(h.dists, dist_angle(env))
     push!(h.positions, h.position)
-    # push!(h.gammas, env.swimmer.gamma)    
-    push!(h.rewards,sum(h.reward))
-    h.reward = []
+    push!(h.gammas, env.swimmer.gamma)    
+    push!(h.rewards,h.reward)
+    h.reward = 0
     h.position = []
 end
 function (h::DistRewardPerEpisode)(::PostActStage, policy, env)
-    push!(h.reward ,reward(env))
+    # push!(h.reward ,reward(env))
+    h.reward += reward(env)
     push!(h.position, env.swimmer.position)
 end
 
@@ -36,9 +37,9 @@ function RL.Experiment(
     # ::Val{:PendulumDiscrete},
     ::Val{:LTSDiscrete},
     ::Nothing;
-    seed = 123,
+    seed = 23,
 )
-    rng = StableRNG(187)
+    rng = StableRNG(seed)
     # env2 = PendulumEnv(continuous = false, max_steps = 5000, rng = rng)
     env = SwimmerEnv(max_steps = 100, target=[0,0])
     ns, na = length(state(env)), length(action_space(env))
@@ -111,6 +112,7 @@ run(ex)
 plot(ex.hook.rewards)
 plot(ex.hook.rewards,marker=:dot)
 plot(ex.hook.gammas ,label="")
+
 rs = [r for (r,t) in ex.hook.dists]#./(ex.env.observation_space[1].right)
 ts = [t for (r,t) in ex.hook.dists]
 plot(rs)
@@ -133,7 +135,7 @@ begin
         [ex.policy.policy.learner.target_approximator([p, v]) |> maximum for p in R, v in Θ]
     end
 
-    n = 100
+    n = 1
     run(ex.policy,ex.env, StopAfterEpisode(n))
     field = -[ex.policy.policy.learner.approximator([p, v]) |> maximum for p in R, v in Θ]
     ofield = -[ex.policy.policy.learner.target_approximator([p, v]) |> maximum for p in R, v in Θ]
@@ -149,14 +151,15 @@ hm = heatmap(field, aspect_ratio=:equal, proj=:polar,yaxis=false,c=:coolwarm)
 
 begin 
 plot([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:green,label="target")
-anim = @animate for pos in ex.hook.positions[9]
+anim = @animate for pos in ex.hook.positions[266]
         plot!([pos[1]],[pos[2]],st=:scatter,aspect_ration=:equal,label="")
 end
 gif(anim)
 
 end
+
 begin
-    i = 1
+    i = 99#argmax(ex.hook.rewards)
 xs = []
 ys = []
 for pos in ex.hook.positions[i]
@@ -168,14 +171,43 @@ plot!([xs[1]],[ys[1]],marker=:circle,st=:scatter,color=:green,label="start")
 plot!(xs,ys,label=ex.hook.rewards[i])
 plot!([xs[end]],[ys[end]],marker=:circle,st=:scatter,color=:red, label="end")
 end
+
+begin
 """
 Bullshit for testing 
 """
-act = env |> policy
-@show env.swimmer
-(env)(act)
+    T = Float32
+    act = env |> ex.policy
+    plot([0],[0],st=:scatter,marker=:star,label="start")
+    for a = 1:5
+        env.swimmer = FD_agent(Vector{T}([0.0,0.0]),Vector{T}([env.params.Γ0,-env.params.Γ0]), T(π/2), Vector{T}([0.0,0.0]),Vector{T}([0.0,0.0]))        
+        (env)(a)
+        # @show env.swimmer
+        plot!([env.swimmer.position[1]],[env.swimmer.position[2]],st=:scatter,label=a)
+    end
+    plot!(aspect_ratio=:equal)
+end
 
 begin
+    """
+    look at turning radius
+    """
+        T = Float32
+        act = env |> ex.policy
+        plot([0],[0],st=:scatter,marker=:star,label="start")
+        env.swimmer = FD_agent(Vector{T}([0.0,0.0]),Vector{T}([-env.params.Γ0, env.params.Γ0]), T(π/2), Vector{T}([0.0,0.0]),Vector{T}([0.0,0.0]))        
+        for t = 1:1000
+            
+            (env)(4)
+            # @show env.swimmer
+            plot!([env.swimmer.position[1]],[env.swimmer.position[2]],st=:scatter,label="")
+        end
+        plot!(aspect_ratio=:equal)
+    end
+    
+
+begin
+type = Float32
 boids = [ex.env.swimmer]
 xs = LinRange{type}(-0.025,0.01,31)
 ys = LinRange{type}(-0.025,0.01,31)
