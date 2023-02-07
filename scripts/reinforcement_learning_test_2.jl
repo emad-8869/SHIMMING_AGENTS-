@@ -120,13 +120,14 @@ plot!(ts)
 
 
 begin 
-#assume the policy is good, run it through the motions
-env = SwimmerEnv(max_steps = 500, target=[1,1])
-h = DistRewardPerEpisode()
-run(ex.policy,env,StopAfterEpisode(50),h)
-
+    #assume the policy is good, run it through the motions
+    env = SwimmerEnv(max_steps = 500, target=[1,1])
+    h = DistRewardPerEpisode()
+    run(ex.policy,env,StopAfterEpisode(50),h)
 end
+
 begin
+    #OUTPUT with a max of eps
     S = state_space(ex.env)
     R = range(S[1].left, stop=S[1].right, length= 51)
     Θ = range(S[2].left, stop=S[2].right, length= 73)
@@ -144,9 +145,11 @@ begin
         # xlabel="R", ylabel="θ", zlabel="cost", title="Episode $n")
     plot(R,Θ, field' , linetype=:contourf,
     ylabel="θ", xlabel="R",  title="Episode $n",c=:thermal)
+
+    hm = heatmap(field, aspect_ratio=:equal, proj=:polar,yaxis=false,c=:coolwarm)
+
 end
 
-hm = heatmap(field, aspect_ratio=:equal, proj=:polar,yaxis=false,c=:coolwarm)
 
 
 begin 

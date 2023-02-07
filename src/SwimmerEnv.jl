@@ -136,11 +136,11 @@ function _step!(env::SwimmingEnv, a)
     ind_v = siv + avg_v #eqn 2.a
 
     angles = angle_projection([env.swimmer],v2v)
-    @show norm(ind_v) #siv,avg_v
+    # @show norm(ind_v) #siv,avg_v
     for (i,b) in enumerate([env.swimmer])
         # log these values and look at them, are they physical? 
         b.position += ind_v[:,i] .* env.params.Δt
-        b.angle = mod2pi(b.angle + angles[i] )#.* env.params.Δt) #eqn 2.b
+        b.angle = mod2pi(b.angle + angles[i] .* env.params.Δt) #eqn 2.b
     end
     
     dn,θn = dist_angle(env.swimmer, env.target)
@@ -213,6 +213,7 @@ function change_circulation!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
     # TODO: Add sign(enb.swimmer.gamma)?
     
     if a == 1
+        # nothing
         env.swimmer.gamma = [-env.params.Γ0, env.params.Γ0]
     elseif a == 2   
         env.swimmer.gamma = [-env.params.Γ0 - env.params.Γa, env.params.Γ0 + env.params.Γa]
@@ -221,7 +222,7 @@ function change_circulation!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
     elseif a == 4  
         env.swimmer.gamma = [-env.params.Γ0 - env.params.Γt, env.params.Γ0 - env.params.Γt]
     elseif a == 5   
-        env.swimmer.gamma = [-env.params.Γ0+env.params.Γt,  env.params.Γ0  + env.params.Γt]
+        env.swimmer.gamma = [-env.params.Γ0 + env.params.Γt, env.params.Γ0  + env.params.Γt]
     else 
         @error "unknown action of $action"
     end 
@@ -230,5 +231,29 @@ function change_circulation!(env::SwimmingEnv{<:Base.OneTo}, a::Int)
 end
 
 state2xy(r,θ) = [r*cos(θ),r*sin(θ)]
+Base.@kwdef mutable struct DistRewardPerEpisode <: AbstractHook    
+    dists::Vector = []
+    position::Vector = []
+    positions:: Vector = []
+    rewards::Vector = []
+    gammas::Vector = []
+    reward = 0
+    is_display_on_exit::Bool = true
+end
+
+function (h::DistRewardPerEpisode)(::PostEpisodeStage, policy, env) 
+    push!(h.dists, dist_angle(env))
+    push!(h.positions, h.position)
+    # push!(h.gammas, env.swimmer.gamma)    
+    push!(h.rewards, h.reward)
+    h.reward = 0.0
+    h.position = []
+end
+function (h::DistRewardPerEpisode)(::PostActStage, policy, env)
+    h.reward += reward(env)
+    push!(h.position, env.swimmer.position)
+end
+
+
 env = SwimmerEnv()
 RLBase.test_runnable!(env)
