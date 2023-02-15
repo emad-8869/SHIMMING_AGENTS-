@@ -120,7 +120,7 @@ function angle_projection(boids::Vector{FD_agent{T}},lrvel::Matrix{T}; ℓ=5e-4)
     #project the velocity difference onto the induced velocity of the swimmer     
     alphadot = zeros(T,n)
     for (i,b) in enumerate(boids)
-        alphadot[i]  =  (right[:,i] - left[:,i])⋅[cos(b.angle), sin(b.angle)] + sum(b.gamma)/(2π*ℓ)  
+        alphadot[i]  =  (right[:,i] - left[:,i])⋅[cos(b.angle), sin(b.angle)]/(ℓ) - sum(b.gamma)/(2π*ℓ^2)  
     end
     alphadot 
 end
