@@ -70,6 +70,7 @@ plot!(pos[1,:],pos[2,:],seriestype=:scatter, label="top")
 plot!(left[1,:],left[2,:],seriestype=:scatter,label="left")
 plot!(right[1,:],right[2,:],seriestype=:scatter,label="right")   
 
+#TAVELING WAVES
 a0 = 0.1
 a = [0.367,0.323,0.310]
 f = k = 1
@@ -78,15 +79,31 @@ amp(x,a) = a[1] + a[2]*x + a[3]*x^2
 
 
 ang = x -> h(x,a)
+T = 0.12
+an = [0.2969, -0.126, -0.3516, 0.2843, -0.1036]
+@. yt(x) = T/0.2 *(an[1]*x^0.5 + an[2]*x + an[3]*x^2 + an[4]*x^3 + an[5]*x^4 )
+plot(x, x->h.(x,0.0))
 
-plot(h.(LinRange(0,1,64),0.0))
+th = h.(x,0)
+plot(x, h.(x,0),aspect_ration=:equal)
+plot!(x[end:-1:1], (yt(x) +th)[end:-1:1])
+plot!(x, -yt(x) + th,aspect_ratio= :equal)
+foil = [ x[end:-1:1]   yt(x[end:-1:1]) ;
+         x     -yt(x)]
+plot!(foil[:,1],foil[:,2],aspect_ratio=:equal)
 
+plot!(foil[21:32,1],foil[21:32,2],marker=:star)
+th = h.(x,0)
+foil_y(x,δ) = [ yt(x[end:-1:1]) + δ[end:-1:1];  -yt(x[2:end])+δ[2:end]]
+plot([x[end:-1:1]; x[2:end]], foil_y(x,th),aspect_ratio=:equal)
 begin 
     n = 25
     T = LinRange(0, 1, n)
-    x = LinRange(0,1,25)
+    # x = LinRange(0,1,25)
     anim = @animate for t in T
-        plot(x,h.(x,t), xlim=(-0.1,1.1), ylim=(-2*a0,2*a0),aspect_ratio=:equal)
+  
+        plot([x[end:-1:1]; x[2:end]], foil_y(x,h.(x,t)), aspect_ratio=:equal)
+        # plot(x,h.(x,t), xlim=(-0.1,1.1), ylim=(-2*a0,2*a0),aspect_ratio=:equal)
     end
     gif(anim,"ang.gif", fps=12)
 end

@@ -14,7 +14,7 @@ reset!(env::YourEnv)
 (env::YourEnv)(action)
 """
 
-include("..\\src\\FiniteDipole.jl")
+include("../src/FiniteDipole.jl")
 struct SwimmerParams{T}
     #parameters for specific set of swimming agents
     ℓ ::T #dipole length - vortex to vortex
@@ -94,10 +94,13 @@ Random.seed!(env::SwimmingEnv, seed) = Random.seed!(env.rng, seed)
 RLBase.action_space(env::SwimmingEnv) = env.action_space
 RLBase.state_space(env::SwimmingEnv) = env.observation_space
 RLBase.reward(env::SwimmingEnv) = env.reward
+#three options for is_terminated
+RLBase.is_terminated(env::SwimmingEnv) = env.done
+
 RLBase.is_terminated(env::SwimmingEnv) = isapprox(env.state[1], 0.0, atol=env.params.ℓ) || env.done #within a quarter of a fish?
 function RLBase.is_terminated(env::SwimmingEnv) 
     if isapprox(env.state[1], 0.0, atol=env.params.D)
-        env.reward += 100.
+        env.reward += 10.
         true
     elseif env.done 
         true
@@ -113,8 +116,8 @@ end
 
 function RLBase.reset!(env::SwimmingEnv{A,T}) where {A,T}
     #go back to the original state, not random?  
-    θ = rand()*2π  #π/2 old
-    r = rand()*env.observation_space[1].right #0.0 old
+    θ = 0.0 #rand()*2π  #π/2 old
+    r = 0.0#rand()*env.observation_space[1].right #0.0 old
 
     env.swimmer = FD_agent(Vector{T}([state2xy(r,θ)...]),Vector{T}([env.params.Γ0,-env.params.Γ0]), 
                                      T(θ), Vector{T}([0.0,0.0]),Vector{T}([0.0,0.0]))
@@ -162,7 +165,12 @@ function _step!(env::SwimmingEnv, a)
 
     #NATE: changed up costs to allow wildly negative costs if outside of observation_space
     costs = env.params.wd*(1- dn /env.observation_space[1].right) + env.rewards[Int(a)]*env.params.wa 
+    #NATE : hits the target, gets a big bonus!
     @assert costs <= 1.0
+    if dn <= env.params.D/2.0 
+        costs += 10.
+    end
+    
     env.done = env.t >= env.max_steps
     env.reward = costs
     nothing

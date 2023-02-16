@@ -92,11 +92,11 @@ begin
         plot!(aspect_ratio=:equal)
 end
     
-plot(ex.hook.rewards,marker=:circle,ms=1,st=:scatter)
+plot(ex.hook.rewards,marker=:circle,ms=10,st=:scatter)
 
 begin
     #animate the path of an Episode
-    epNum = 99
+    epNum =  argmax(ex.hook.rewards)
     plot([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:green,label="target")
     anim = @animate for pos in ex.hook.positions[epNum]
             plot!([pos[1]],[pos[2]],st=:scatter,
@@ -110,7 +110,7 @@ end
 
 begin
     i = argmax(ex.hook.rewards)
-    is = findall(x-> x>100, ex.hook.rewards)
+    is = findall(x-> x>10, ex.hook.rewards)
     plot()
     for i in is
         xs = []
