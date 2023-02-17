@@ -7,7 +7,8 @@ using Plots
 
 
 
-include(".\\SwimmerEnv.jl")
+include("./SwimmerEnv.jl")
+
 function RL.Experiment(
     ::Val{:JuliaRL},
     ::Val{:BasicDQN},

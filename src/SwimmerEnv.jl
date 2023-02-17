@@ -14,7 +14,7 @@ reset!(env::YourEnv)
 (env::YourEnv)(action)
 """
 
-include("../src/FiniteDipole.jl")
+include("./FiniteDipole.jl")
 struct SwimmerParams{T}
     #parameters for specific set of swimming agents
     ℓ ::T #dipole length - vortex to vortex
