@@ -58,16 +58,28 @@ mutable struct SwimmingEnv{A,T,R} <: AbstractEnv
     n_actions::Int
     swimmer::FD_agent{T}
     target::Vector{T}
+    freestream::Vector{T}
     # swimmers::Vector{FD_agent{T}} #multiple swimmers 
 end
 
 
-function SwimmerEnv(; T = Float32,  max_steps = 500, n_actions::Int = 5, rng = Random.GLOBAL_RNG, ℓ=5e-4, target=[5.0,0.0])
+"""
+    SwimmerEnv(; T = Float32,  max_steps = 500, n_actions::Int = 5, rng = Random.GLOBAL_RNG,
+    termation_type=1, ℓ=5e-4, target=[5.0,0.0],freestream = [1,0,3])
+
+T = Type, max_steps is the number of steps per episode, n_actions is actions of the swimmer locked to five for now 
+rng = Random Num Gen, termation_type selects differenct criteria for ending an episode,ℓ dist to vortex from mdpt
+target is location of target scaled by d
+freestream = [x_dir, y_dir, Uinf*v0]
+"""
+function SwimmerEnv(; T = Float32,  max_steps = 500, n_actions::Int = 5, rng = Random.GLOBAL_RNG,
+    ℓ=5e-4, target=[5.0,0.0],freestream = [1,0,3])
     # high = T.([1, 1, max_speed])
     ℓ = convert(T,ℓ)
     action_space = Base.OneTo(n_actions) # A = [CRUISE, FASTER, SLOWER, LEFT, RIGHT]
     ηs = [1, -1, 1, -1, -1] # [CRUISE, FASTER, SLOWER, LEFT, RIGHT]
     swim =  SwimmerParams(ℓ,T)
+    #the freestream tuple is [x,y,scale] -> scale*v0*[x,y]
     env = SwimmingEnv(swim,
         action_space,
         0|>T,
@@ -83,7 +95,10 @@ function SwimmerEnv(; T = Float32,  max_steps = 500, n_actions::Int = 5, rng = R
         FD_agent(Vector{T}([0.0,0.0]),Vector{T}([swim.Γ0,-swim.Γ0]), T(π/2), Vector{T}([0.0,0.0]),Vector{T}([0.0,0.0])), 
         # Vector{T}([-5.0 * swim.D, 0.0])
         # Vector{T}([5.0 * swim.D, 0.0])
-        convert(Vector{T}, target.*swim.D)
+        convert(Vector{T}, target.*swim.D),
+        #the freestream tuple is [x,y,scale] -> scale*v0*[x,y]
+        convert(Vector{T}, freestream[3]*swim.v0*[freestream[1],freestream[2]]/norm([freestream[1],freestream[2]]))
+
     )
     reset!(env)
     env
@@ -97,17 +112,25 @@ RLBase.reward(env::SwimmingEnv) = env.reward
 #three options for is_terminated
 RLBase.is_terminated(env::SwimmingEnv) = env.done
 
-RLBase.is_terminated(env::SwimmingEnv) = isapprox(env.state[1], 0.0, atol=env.params.ℓ) || env.done #within a quarter of a fish?
-function RLBase.is_terminated(env::SwimmingEnv) 
-    if isapprox(env.state[1], 0.0, atol=env.params.D)
-        env.reward += 10.
-        true
-    elseif env.done 
-        true
-    else
-        false
-    end
-end
+# RLBase.is_terminated(env::SwimmingEnv) = isapprox(env.state[1], 0.0, atol=env.params.ℓ) || env.done #within a quarter of a fish?
+# function RLBase.is_terminated(env::SwimmingEnv) 
+#     if env.termination_type == 1
+#         if env.done
+#             return true 
+#         else
+#             return false
+#         end
+#     elseif env.termination_type == 2
+#         if isapprox(env.state[1], 0.0, atol=env.params.D)
+#             env.reward += 10.
+#             return true
+#         elseif env.done 
+#             return true
+#         else
+#             return false
+#         end
+#     end
+# end
 
 function RLBase.state(env::SwimmingEnv{A,T}) where {A,T} 
     dn,θn =  dist_angle(env.swimmer,env.target)
@@ -116,8 +139,8 @@ end
 
 function RLBase.reset!(env::SwimmingEnv{A,T}) where {A,T}
     #go back to the original state, not random?  
-    θ = 0.0 #rand()*2π  #π/2 old
-    r = 0.0#rand()*env.observation_space[1].right #0.0 old
+    θ = rand()*2π  #π/2 old
+    r = rand()*env.observation_space[1].right #0.0 old
 
     env.swimmer = FD_agent(Vector{T}([state2xy(r,θ)...]),Vector{T}([env.params.Γ0,-env.params.Γ0]), 
                                      T(θ), Vector{T}([0.0,0.0]),Vector{T}([0.0,0.0]))
@@ -147,11 +170,11 @@ function _step!(env::SwimmingEnv, a)
     siv = self_induced_velocity([env.swimmer];env.params.ℓ)
     ind_v = siv + avg_v #eqn 2.a
 
-    angles = angle_projection([env.swimmer],v2v)
+    angles = angle_projection([env.swimmer],v2v .+ env.freestream)
     # @show norm(ind_v) #siv,avg_v
     for (i,b) in enumerate([env.swimmer])
         # log these values and look at them, are they physical? 
-        b.position += ind_v[:,i] .* env.params.Δt
+        b.position += (ind_v[:,i] + env.freestream) .* env.params.Δt
         b.angle = mod2pi(b.angle + angles[i] .* env.params.Δt) #eqn 2.b
     end
     
