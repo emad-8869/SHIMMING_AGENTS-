@@ -3,8 +3,10 @@ using Plots
 using SparseArrays
 # using PlotlyJS
 using LinearAlgebra
-include("..\\src\\FiniteDipole.jl")
 using FiniteDipole
+
+include("..\\src\\FiniteDipole.jl")
+#using FiniteDipole
 # TODO : Nate add in freestream velocity field calcs for determining if the 
 # angle_projection methods work -add tests
 Base.@kwdef mutable struct boid{T<:Real}
