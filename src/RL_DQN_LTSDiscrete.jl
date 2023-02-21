@@ -4,7 +4,8 @@ using StableRNGs
 using Flux
 using Flux.Losses
 using Plots
-
+using StatsPlots
+using DataFrames
 
 
 include("./SwimmerEnv.jl")
@@ -95,16 +96,18 @@ end
     
 plot(ex.hook.rewards,marker=:circle,ms=10,st=:scatter)
 
+
 begin
     #animate the path of an Episode
     epNum =  argmax(ex.hook.rewards)
-    plot([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:green,label="target")
+    plot([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:black,label="target")
     anim = @animate for pos in ex.hook.positions[epNum]
             plot!([pos[1]],[pos[2]],st=:scatter,
                  aspect_ration=:equal,label="",markershape=:octagon,
-                 color=:blue)
+                 color=:red)
     end
     gif(anim)
+    
 end
 
 

@@ -1,4 +1,5 @@
 [deps]
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
 IntervalSets = "8197267c-284f-5f27-9208-e0e47529a953"
 LazyGrids = "7031d0ef-c40d-4431-b2f8-61a8d2f650db"
@@ -9,3 +10,4 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 ReinforcementLearning = "158674fc-8238-5cab-b5ba-03dfc80d1318"
 ReinforcementLearningExperiments = "6bd458e5-1694-412f-b601-3a888375c491"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
+StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
