@@ -4,8 +4,8 @@ using StableRNGs
 using Flux
 using Flux.Losses
 using Plots
-using StatsPlots
-using DataFrames
+#using StatsPlots
+#using DataFrames
 
 
 include("./SwimmerEnv.jl")
@@ -80,6 +80,7 @@ begin
     """
     look at turning radius - left
     """
+    # swimmer prsms =
         T = Float32
         act = env |> ex.policy
         plot([0],[0],st=:scatter,marker=:star,label="start")
@@ -128,5 +129,5 @@ begin
         plot!(xs,ys,lw=0.5,label="")#ex.hook.rewards[i])
         plot!([xs[end]],[ys[end]],marker=:circle,ms=1,st=:scatter,color=:red, label="")
     end
-    plot!([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:green,label="")
+    plot!([ex.env.target[1]],[ex.env.target[2]],st=:scatter,marker=:star,color=:red,label="")
 end
