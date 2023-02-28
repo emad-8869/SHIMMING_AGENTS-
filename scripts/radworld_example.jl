@@ -7,7 +7,7 @@ using Random
 using Parameters
 using LinearAlgebra
 #make sure your path is correct
-include("..\\src\\FiniteDipole.jl")
+include("..\\scripts\\FiniteDipole.jl")
 # using FiniteDipole # NATE: killed modules
 
 # define State space _>>> EXPAND the boid definition to eat this

@@ -10,6 +10,8 @@ using Plots
 
 include("./SwimmerEnv.jl")
 
+
+
 function RL.Experiment(
     ::Val{:JuliaRL},
     ::Val{:BasicDQN},
@@ -85,7 +87,7 @@ begin
         act = env |> ex.policy
         plot([0],[0],st=:scatter,marker=:star,label="start")
         env.swimmer = FD_agent(Vector{T}([0.0,0.0]),Vector{T}([-env.params.Γ0, env.params.Γ0]), T(π/2), Vector{T}([0.0,0.0]),Vector{T}([0.0,0.0]))        
-        for t = 1:1000
+        for t = 1:1000 + 1:100
             
             (env)(4)
             # @show env.swimmer
@@ -105,7 +107,7 @@ begin
     anim = @animate for pos in ex.hook.positions[epNum]
             plot!([pos[1]],[pos[2]],st=:scatter,
                  aspect_ration=:equal,label="",markershape=:octagon,
-                 color=:red)
+                 color=:blue)
     end
     gif(anim)
     
