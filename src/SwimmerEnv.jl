@@ -73,7 +73,7 @@ target is location of target scaled by d
 freestream = [x_dir, y_dir, Uinf*v0]
 """
 function SwimmerEnv(; T = Float32,  max_steps = 500, n_actions::Int = 5, rng = Random.GLOBAL_RNG,
-    ℓ=5e-4, target=[5.0,0.0],freestream = [1,0,3])
+    ℓ=5e-4, target=[5.0,0.0], freestream = [1,0,3])
     # high = T.([1, 1, max_speed])
     ℓ = convert(T,ℓ)
     action_space = Base.OneTo(n_actions) # A = [CRUISE, FASTER, SLOWER, LEFT, RIGHT]
@@ -303,6 +303,7 @@ Base.@kwdef mutable struct DistRewardPerEpisode <: AbstractHook
     positions:: Vector = []
     rewards::Vector = []
     gammas::Vector = []
+    target_pos ::Vector = []
     reward = 0
     is_display_on_exit::Bool = true
 end
@@ -318,6 +319,7 @@ end
 function (h::DistRewardPerEpisode)(::PostActStage, policy, env)
     h.reward += reward(env)
     push!(h.position, env.swimmer.position)
+    push!(h.target_pos, env.target)
 end
 
 
